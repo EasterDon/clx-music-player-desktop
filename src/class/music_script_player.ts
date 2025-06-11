@@ -1,14 +1,14 @@
-import {reactive} from 'vue';
-import {register,unregisterAll} from '@tauri-apps/plugin-global-shortcut';
-import {message} from 'ant-design-vue';
-import {get_songs_list,get_song_notation} from '@/api';
-import {delay,click} from '@/util';
+import { reactive } from 'vue';
+import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
+import { message } from 'ant-design-vue';
+import { get_songs_list, get_song_notation } from '@/api';
+import { delay, click } from '@/util';
 
 export class MusicScriptPlayer {
   private state = reactive<MusicScriptPlayerState>({
     songs_list: [],
     current_song_value: null,
-    continue_play:false
+    continue_play: false,
   });
 
   get songs_list() {
@@ -17,6 +17,9 @@ export class MusicScriptPlayer {
 
   get current_song_value() {
     return this.state.current_song_value;
+  }
+  set current_song_value(song_value: MusicListItem) {
+    this.state.current_song_value = song_value;
   }
 
   set_current_music(id: number) {
@@ -33,35 +36,36 @@ export class MusicScriptPlayer {
       message.warn('请先选择一首歌曲哦');
       return;
     }
-    if(this.state.continue_play){
+    if (this.state.continue_play) {
       return;
     }
-    const song_notation =
-      await get_song_notation(this.state.current_song_value.id);
+    const song_notation = await get_song_notation(
+      this.state.current_song_value.id,
+    );
     this.state.continue_play = true;
-    for (const item of song_notation){
-      if(!this.state.continue_play){
+    for (const item of song_notation) {
+      if (!this.state.continue_play) {
         break;
-      };
-      if(typeof item === 'number'){
+      }
+      if (typeof item === 'number') {
         await delay(item);
-      };
-      if(typeof item === 'string'){
+      }
+      if (typeof item === 'string') {
         await click(item);
       }
     }
   }
 
-  stop(){
+  stop() {
     this.state.continue_play = false;
   }
 
-  async set_hotkey(){
+  async set_hotkey() {
     await unregisterAll();
-    await register('F1',()=>{
+    await register('F1', () => {
       this.play();
     });
-    await register('F2',()=>{
+    await register('F2', () => {
       this.stop();
     });
   }
