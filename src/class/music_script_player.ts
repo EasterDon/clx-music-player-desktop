@@ -16,7 +16,7 @@ export class MusicScriptPlayer {
   }
 
   get current_song_value() {
-    return this.state.current_song_value;
+    return this.state.current_song_value!;
   }
   set current_song_value(song_value: MusicListItem) {
     this.state.current_song_value = song_value;

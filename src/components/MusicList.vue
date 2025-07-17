@@ -2,6 +2,7 @@
 import { Avatar, Card, CardMeta, List, ListItem } from 'ant-design-vue';
 import { useBreakpoints } from '@vueuse/core';
 import { songs_resource_url } from '@/config';
+import { reactive } from 'vue';
 const { songs } = defineProps<{ songs: MusicList }>();
 
 const breakpoints = useBreakpoints({
@@ -17,6 +18,11 @@ const cover_src = (song: MusicListItem) => {
 const emit = defineEmits(['set_current_song']);
 const set_current_song = (item: MusicListItem) => {
   emit('set_current_song', item);
+};
+
+const test_value = reactive<boolean[]>([]);
+const test = (id: number) => {
+  test_value[id] = true;
 };
 </script>
 
@@ -39,15 +45,20 @@ const set_current_song = (item: MusicListItem) => {
     </div>
     <div class="desktop" v-show="!isLine">
       <Card
+        class="card"
+        :class="{ hide: !test_value[item.id] }"
         hoverable
         v-for="item in songs"
         :key="item.id"
         @click="set_current_song(item)"
       >
         <template #cover>
-          <img alt="封面" :src="cover_src(item)" />
+          <img :src="cover_src(item)" alt="" :onload="() => test(item.id)" />
         </template>
-        <CardMeta :title="item.name">
+        <CardMeta>
+          <template #title>
+            <span class="title">{{ item.name }}</span></template
+          >
           <template #description>{{ item.author }}</template>
         </CardMeta>
       </Card>
@@ -107,5 +118,19 @@ const set_current_song = (item: MusicListItem) => {
   grid-template-columns: repeat(auto-fill, 150px);
   grid-gap: 20px;
   justify-content: center;
+}
+
+.card {
+  opacity: 1;
+  transition: opacity 0.5s;
+}
+
+.hide {
+  opacity: 0;
+}
+
+.title {
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
 }
 </style>
