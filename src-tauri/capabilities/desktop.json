@@ -1,9 +1,16 @@
 {
   "identifier": "desktop-capability",
-  "platforms": ["macOS", "windows", "linux"],
-  "windows": ["main"],
+  "platforms": [
+    "macOS",
+    "windows",
+    "linux"
+  ],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "global-shortcut:allow-unregister-all",
-    "global-shortcut:allow-register"
+    "global-shortcut:allow-register",
+    "shell:allow-open"
   ]
 }

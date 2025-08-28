@@ -1,59 +1,79 @@
 <script setup lang="ts">
-import { Avatar, Card, CardMeta, List, ListItem } from 'ant-design-vue';
-import { useBreakpoints } from '@vueuse/core';
-import { songs_resource_url } from '@/config';
-import { reactive } from 'vue';
+import { reactive, ref } from "vue";
+import {
+  Avatar,
+  Card,
+  CardMeta,
+  List,
+  ListItem,
+  ConfigProvider,
+} from "ant-design-vue";
+import zhCN from "ant-design-vue/es/locale/zh_CN";
+import { useBreakpoints } from "@vueuse/core";
+import { songs_resource_url } from "@/config";
 const { songs } = defineProps<{ songs: MusicList }>();
 
 const breakpoints = useBreakpoints({
   line: 1440,
 });
 
-const isLine = breakpoints.smaller('line');
+const isLine = breakpoints.smaller("line");
 
 const cover_src = (song: MusicListItem) => {
   return `${songs_resource_url}/${song.id}/music.jpg`;
 };
 
-const emit = defineEmits(['set_current_song']);
+const emit = defineEmits(["set_current_song"]);
 const set_current_song = (item: MusicListItem) => {
-  emit('set_current_song', item);
+  if (current_song_id.value === item.id) return;
+  current_song_id.value = item.id;
+  emit("set_current_song", item);
 };
+const current_song_id = ref<number | null>(null);
 
-const test_value = reactive<boolean[]>([]);
-const test = (id: number) => {
-  test_value[id] = true;
+const img_loaded = reactive<boolean[]>([]);
+const loaded = (id: number) => {
+  img_loaded[id] = true;
 };
 </script>
 
 <template>
   <div class="music-list">
     <div class="mobile" v-show="isLine">
-      <List size="large" item-layout="horizontal" :data-source="songs">
-        <template #renderItem="{ item }">
-          <ListItem class="line-item-container" @click="set_current_song(item)">
-            <div class="line-item">
-              <Avatar :size="60" :src="cover_src(item)" />
-              <div class="song-info">
-                <p>{{ item.name }}</p>
-                <p>{{ item.author }}</p>
+      <ConfigProvider :locale="zhCN">
+        <List size="large" item-layout="horizontal" :data-source="songs">
+          <template #renderItem="{ item }">
+            <ListItem
+              class="line-item-container"
+              :class="{ 'mobile-selected': current_song_id === item.id }"
+              @click="set_current_song(item)"
+            >
+              <div class="line-item">
+                <Avatar :size="60" :src="cover_src(item)" />
+                <div class="song-info">
+                  <p>{{ item.name }}</p>
+                  <p>{{ item.author }}</p>
+                </div>
               </div>
-            </div>
-          </ListItem>
-        </template>
-      </List>
+            </ListItem>
+          </template>
+        </List>
+      </ConfigProvider>
     </div>
     <div class="desktop" v-show="!isLine">
       <Card
         class="card"
-        :class="{ hide: !test_value[item.id] }"
+        :class="{
+          hide: !img_loaded[item.id],
+          'desktop-selected': current_song_id === item.id,
+        }"
         hoverable
         v-for="item in songs"
         :key="item.id"
         @click="set_current_song(item)"
       >
         <template #cover>
-          <img :src="cover_src(item)" alt="" :onload="() => test(item.id)" />
+          <img :src="cover_src(item)" alt="" :onload="() => loaded(item.id)" />
         </template>
         <CardMeta>
           <template #title>
@@ -83,9 +103,6 @@ const test = (id: number) => {
   &:hover {
     background-color: #f0f0f0;
   }
-  &:focus {
-    background-color: #f5f5f5;
-  }
 }
 
 .line-item {
@@ -107,7 +124,7 @@ const test = (id: number) => {
       }
       &:nth-child(2) {
         font-size: 0.9rem;
-        color: #959595;
+        color: #696969;
       }
     }
   }
@@ -118,6 +135,8 @@ const test = (id: number) => {
   grid-template-columns: repeat(auto-fill, 150px);
   grid-gap: 20px;
   justify-content: center;
+  box-sizing: border-box;
+  padding: 15px 0;
 }
 
 .card {
@@ -132,5 +151,13 @@ const test = (id: number) => {
 .title {
   overflow-wrap: break-word;
   white-space: pre-wrap;
+}
+
+.mobile-selected {
+  background-color: #f0f0f0;
+}
+
+.desktop-selected {
+  box-shadow: 0 0 2px 2px rgba(71, 167, 235, 0.86);
 }
 </style>

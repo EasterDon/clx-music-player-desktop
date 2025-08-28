@@ -31,13 +31,13 @@ fn click_up(enigo_state: State<EnigoState>, key: &str) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_opener::init())
         .manage(EnigoState(Arc::new(Mutex::new(
             Enigo::new(&Settings::default()).unwrap(),
         ))))
         .invoke_handler(tauri::generate_handler![click, click_down, click_up])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("运行应用失败");
 }

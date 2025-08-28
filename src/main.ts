@@ -1,9 +1,10 @@
-import { createApp } from 'vue';
-import App from './App.vue';
-import './main.less';
+import { createApp } from "vue";
+import { createPinia } from "pinia";
+import App from "./App.vue";
+import "./main.less";
 
 document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
 });
 
-createApp(App).mount('#app');
+createApp(App).use(createPinia()).mount("#app");
