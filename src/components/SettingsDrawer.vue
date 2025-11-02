@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive } from "vue";
-import { open } from "@tauri-apps/plugin-shell";
+import { computed, reactive } from 'vue';
+import { open } from '@tauri-apps/plugin-shell';
 import {
   RadioButton,
   RadioGroup,
@@ -14,16 +14,16 @@ import {
   TypographyTitle,
   TypographyParagraph,
   TypographyLink,
-} from "ant-design-vue";
-import { InfoCircleOutlined } from "@ant-design/icons-vue";
-import { use_config_store, PlayMode } from "@/store/config";
-import { app_version } from "@/config";
+} from 'ant-design-vue';
+import { InfoCircleOutlined } from '@ant-design/icons-vue';
+import { use_config_store, PlayMode } from '@/store/config';
+import { app_version } from '@/config';
 
 const config_store = use_config_store();
 
-const state = reactive({ app_info_modal: false, FAQ: false });
+const state = reactive({ app_info_modal: false, FAQ: false, tip: false });
 const version_update = computed(
-  () => app_version !== config_store.app_info.app_version
+  () => app_version !== config_store.app_info.app_version,
 );
 
 const to_download = () => {
@@ -34,6 +34,19 @@ const modal_width = 350;
 </script>
 
 <template>
+  <div
+    style="
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      cursor: pointer;
+      color: gray;
+      font-size: small;
+    "
+    @click="state.tip = true"
+  >
+    开发者碎碎念
+  </div>
   <div>
     模式选择：
     <Space>
@@ -118,6 +131,9 @@ const modal_width = 350;
         前往更新：<Button type="link" @click="to_download">专栏链接</Button>
       </p>
     </div>
+  </Modal>
+  <Modal v-model:open="state.tip" :footer="false" :width="modal_width" centered>
+    <p style="text-align: center">{{ config_store.app_info.announcement }}</p>
   </Modal>
 </template>
 

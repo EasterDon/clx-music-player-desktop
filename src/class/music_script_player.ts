@@ -1,7 +1,7 @@
-import { reactive } from "vue";
-import { message } from "ant-design-vue";
-import { get_songs_list, get_song_notation } from "@/api";
-import { click } from "@/util";
+import { reactive } from 'vue';
+import { message } from 'ant-design-vue';
+import { get_songs_list, get_song_notation } from '@/api';
+import { click } from '@/util';
 
 export class MusicScriptPlayer {
   private state = reactive<MusicScriptPlayerState>({
@@ -9,6 +9,10 @@ export class MusicScriptPlayer {
     current_song_value: null,
     continue_play: false,
   });
+
+  get continue_play() {
+    return this.state.continue_play;
+  }
 
   get songs_list() {
     return this.state.songs_list;
@@ -40,14 +44,14 @@ export class MusicScriptPlayer {
 
   async play() {
     if (!this.state.current_song_value) {
-      message.warn("请先选择一首歌曲哦");
+      message.warn('请先选择一首歌曲哦');
       return;
     }
     if (this.state.continue_play) {
       return;
     }
     const song_notation = await get_song_notation(
-      this.state.current_song_value.id
+      this.state.current_song_value.id,
     );
 
     this.state.continue_play = true;
@@ -55,14 +59,15 @@ export class MusicScriptPlayer {
       if (!this.state.continue_play) {
         break;
       }
-      if (typeof item === "number") {
+      if (typeof item === 'number') {
         await this.delay(item);
         this.timer = null;
       }
-      if (typeof item === "string") {
+      if (typeof item === 'string') {
         await click(item);
       }
     }
+    this.state.continue_play = false;
   }
 
   stop() {

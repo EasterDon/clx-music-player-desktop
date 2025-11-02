@@ -1,22 +1,23 @@
-import { fetch } from "@tauri-apps/plugin-http";
-import { base_url, songs_url } from "@/config";
+import { fetch } from '@tauri-apps/plugin-http';
+import { app_url, music_url } from '@/config';
 
 export const get_songs_list = async () => {
-  const response = await fetch(songs_url);
-  const songs_list: MusicList = await response.json();
-  return songs_list;
+  const response = await fetch(music_url);
+  const res: { data: MusicList } = await response.json();
+  return res.data;
 };
 
 export const get_song_notation = async (music_id: number) => {
-  const response = await fetch(`${songs_url}/${music_id}/notation`);
-  const notation: MusicChars = await response.json();
-  return notation;
+  const response = await fetch(`${music_url}/${music_id}/notation`);
+  const res: { data: MusicChars } = await response.json();
+  return res.data;
 };
 
 export const get_song_lyrics = async (music_id: number) => {
-  const response = await fetch(`${songs_url}/${music_id}/lyrics`);
-  const lyrics: string = await response.text();
-  return lyrics;
+  const response = await fetch(`${music_url}/${music_id}/lyrics`);
+  const res = await response.json();
+  console.log(res);
+  return res.data;
 };
 
 export const get_app_info = async (): Promise<{
@@ -26,7 +27,16 @@ export const get_app_info = async (): Promise<{
   app_download_link: string;
   app_version_description: string;
 }> => {
-  const response = await fetch(`${base_url}/app`);
-  const app_info = await response.json();
-  return app_info;
+  const response = await fetch(`${app_url}`);
+  const res = await response.json();
+  return res.data;
 };
+
+class Api {
+  static #base_url = 'http:127.0.0.1';
+  static #version = 'v2';
+
+  static get_lyrics_url(id: number) {
+    return `${this.#base_url}/${this.#version}/${id}/lyrics`;
+  }
+}

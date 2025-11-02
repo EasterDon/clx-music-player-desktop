@@ -1,6 +1,6 @@
 [package]
 name = "clx_music_player"
-version = "2.0.0"
+version = "1.0.0"
 description = "一梦音乐播放器"
 authors = ["EasterDon"]
 license = "AGPL-3.0-only"

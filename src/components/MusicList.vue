@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, ref } from 'vue';
 import {
   Avatar,
   Card,
@@ -7,27 +7,27 @@ import {
   List,
   ListItem,
   ConfigProvider,
-} from "ant-design-vue";
-import zhCN from "ant-design-vue/es/locale/zh_CN";
-import { useBreakpoints } from "@vueuse/core";
-import { songs_resource_url } from "@/config";
+} from 'ant-design-vue';
+import zhCN from 'ant-design-vue/es/locale/zh_CN';
+import { useBreakpoints } from '@vueuse/core';
+import { music_resource_url } from '@/config';
 const { songs } = defineProps<{ songs: MusicList }>();
 
 const breakpoints = useBreakpoints({
   line: 1440,
 });
 
-const isLine = breakpoints.smaller("line");
+const isLine = breakpoints.smaller('line');
 
 const cover_src = (song: MusicListItem) => {
-  return `${songs_resource_url}/${song.id}/music.jpg`;
+  return `${music_resource_url}/${song.id}/music.jpg`;
 };
 
-const emit = defineEmits(["set_current_song"]);
+const emit = defineEmits(['set_current_song']);
 const set_current_song = (item: MusicListItem) => {
   if (current_song_id.value === item.id) return;
   current_song_id.value = item.id;
-  emit("set_current_song", item);
+  emit('set_current_song', item);
 };
 const current_song_id = ref<number | null>(null);
 
@@ -64,7 +64,7 @@ const loaded = (id: number) => {
       <Card
         class="card"
         :class="{
-          hide: !img_loaded[item.id],
+          'hide': !img_loaded[item.id],
           'desktop-selected': current_song_id === item.id,
         }"
         hoverable
