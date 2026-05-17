@@ -1,42 +1,46 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import { app_url, music_url } from '@/config';
 
-export const get_songs_list = async () => {
-  const response = await fetch(music_url);
-  const res: { data: MusicList } = await response.json();
-  return res.data;
-};
-
-export const get_song_notation = async (music_id: number) => {
-  const response = await fetch(`${music_url}/${music_id}/notation`);
-  const res: { data: MusicChars } = await response.json();
-  return res.data;
-};
-
-export const get_song_lyrics = async (music_id: number) => {
-  const response = await fetch(`${music_url}/${music_id}/lyrics`);
-  const res = await response.json();
-  console.log(res);
-  return res.data;
-};
-
-export const get_app_info = async (): Promise<{
-  id: number;
-  announcement: string;
-  app_version: string;
-  app_download_link: string;
-  app_version_description: string;
-}> => {
-  const response = await fetch(`${app_url}`);
-  const res = await response.json();
-  return res.data;
-};
-
-class Api {
-  static #base_url = 'http:127.0.0.1';
-  static #version = 'v2';
-
-  static get_lyrics_url(id: number) {
-    return `${this.#base_url}/${this.#version}/${id}/lyrics`;
+/**
+ * 统一解析 JSON，并在 HTTP 非成功时抛出可读错误，避免把 HTML 错页当 JSON 解析。
+ */
+const fetch_json = async <T>(url: string): Promise<T> => {
+  const response = await fetch(url);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `请求失败 ${response.status} ${response.statusText}：${text.slice(0, 160)}`,
+    );
   }
-}
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error('响应不是合法 JSON');
+  }
+};
+
+export const get_music_list = async (): Promise<MusicList> => {
+  const res = await fetch_json<Api_Envelope<MusicList>>(music_url);
+  return res.data;
+};
+
+export const get_music_notation = async (
+  music_id: number,
+): Promise<MusicChars> => {
+  const res = await fetch_json<Api_Envelope<MusicChars>>(
+    `${music_url}/${music_id}/notation`,
+  );
+  return res.data;
+};
+
+export const get_music_lyrics = async (music_id: number): Promise<string> => {
+  const res = await fetch_json<Api_Envelope<string>>(
+    `${music_url}/${music_id}/lyrics`,
+  );
+  return res.data;
+};
+
+export const get_app_info = async (): Promise<App_Info> => {
+  const res = await fetch_json<Api_Envelope<App_Info>>(`${app_url}`);
+  return res.data;
+};

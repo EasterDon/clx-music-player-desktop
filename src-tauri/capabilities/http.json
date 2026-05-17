@@ -1,0 +1,15 @@
+{
+  "identifier": "http-capability",
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main"],
+  "permissions": [
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://127.0.0.1:*/*" },
+        { "url": "http://127.0.0.1:*/*" }
+      ]
+    }
+  ]
+}

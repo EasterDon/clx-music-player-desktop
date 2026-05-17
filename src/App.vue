@@ -1,17 +1,8 @@
 <script setup lang="ts">
-import {
-  reactive,
-  computed,
-  onMounted,
-  useTemplateRef,
-  ref,
-  nextTick,
-  watch,
-} from 'vue';
+import { reactive, computed, useTemplateRef, ref } from 'vue';
 import {
   message,
   Drawer,
-  Button,
   Badge,
   Input,
   Modal,
@@ -20,314 +11,130 @@ import {
 } from 'ant-design-vue';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
 import { useBreakpoints } from '@vueuse/core';
-import {
-  CaretRightOutlined,
-  LeftOutlined,
-  RightOutlined,
-  PauseOutlined,
-  MenuUnfoldOutlined,
-} from '@ant-design/icons-vue';
-import { spin } from '@/util/spin';
-import { SpinInstance } from '@/util/types';
-import MusicList from '@/components/MusicList.vue';
-import SettingsDrawer from '@/components/SettingsDrawer.vue';
-import { MusicScriptPlayer } from '@/class/music_script_player';
-import { music_resource_url } from '@/config';
-import { get_app_info, get_song_lyrics } from '@/api';
-import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
-import { PlayMode, use_config_store } from '@/store/config';
+import { MenuUnfoldOutlined } from '@ant-design/icons-vue';
+import MusicList from '@/components/MusicList/index.vue';
+import LyricsPage from '@/components/Lyrics/index.vue';
+import SettingsDrawer from '@/components/SettingsDrawer/index.vue';
+import PlayerControls from '@/components/player_controls/index.vue';
+import { desktop_breakpoint, music_resource_url } from '@/config';
+import { use_music_store } from '@/store/player';
+import { get_app_info, get_music_lyrics, get_music_list } from '@/api';
+import { use_config_store } from '@/store/config';
 import { app_version } from '@/config';
-import { ChangeEvent } from 'ant-design-vue/es/_util/EventInterface';
+import {
+  use_filtered_music_list,
+  use_global_shortcuts,
+  use_selection_spin,
+  use_app_bootstrap,
+} from '@/composables';
+console.log('服务器地址', import.meta.env.VITE_BASE_URL);
 
-const music_player = new MusicScriptPlayer();
+const music_store = use_music_store();
 const config_store = use_config_store();
 
-const song_state = reactive({
+const { music_list_display, on_music_filter } = use_filtered_music_list();
+
+const music_state = reactive({
   choose: false,
-  mp3: false,
   lyrics: false,
   script: true,
 });
 
 const breakpoints = useBreakpoints({
-  mobile: 768, // ≤768px 视为移动端
+  mobile: desktop_breakpoint,
 });
 
-const isDesktop = breakpoints.greater('mobile');
+const is_desktop = breakpoints.greater('mobile');
 
-const state = reactive<{ music_lyrics: Lyrics; isPlaying: boolean }>({
-  music_lyrics: [
-    {
-      time: 0,
-      content: '暂未选择歌曲',
-    },
-  ],
-  isPlaying: false,
-});
-
-let lyrics_length = 0;
 const spinning = computed(() => {
-  if (!song_state.choose) return false;
-  return !(song_state.lyrics && song_state.mp3 && song_state.script);
+  if (!music_state.choose) return false;
+  return !(music_state.lyrics && music_state.script);
 });
 
-let spinIntance: SpinInstance | null = null;
-watch(
-  () => spinning.value,
-  (newVal, oldVal) => {
-    if (newVal === oldVal) return;
-    if (newVal) {
-      spinIntance = spin();
-    } else {
-      spinIntance?.close();
-    }
-  },
-);
+use_selection_spin(spinning);
 
-const audio_canplay = async () => {
-  song_state.mp3 = true;
-};
-const set_current_song = async (song: MusicListItem) => {
-  song_state.choose = true;
-  song_state.lyrics = false;
-  song_state.mp3 = false;
-  if (
-    music_player.current_song_value &&
-    music_player.current_song_value.id === song.id
-  ) {
-    return;
+const modal_listen_mode = ref(false);
+const { register_shortcuts } = use_global_shortcuts(() => {
+  modal_listen_mode.value = true;
+});
+
+/**
+ * 切换当前曲目：拉歌词并更新子组件；不自动播放，需用户点播放。
+ * script 标记预留给后续谱面相关流程（与全局 loading 条件一致）。
+ */
+const set_current_music = async (music: MusicListItem) => {
+  music_state.choose = true;
+  music_state.lyrics = false;
+  if (music_store.current_music && music_store.current_music.id === music.id) {
+    return void 0;
   }
-  audio_end();
-  state.music_lyrics = [];
-  music_player.current_song_value = song;
+  // 切歌时只暂停，不重置歌词位移，避免上一首歌词先跳到顶部。
+  audio_pause();
+  music_store.current_music = music;
   try {
-    const lyrics_string = await get_song_lyrics(song.id);
-    state.music_lyrics = trans_lyrics_string(lyrics_string);
-    lyrics_length = state.music_lyrics.length;
-    song_state.lyrics = true;
+    const lyrics_string = await get_music_lyrics(music.id);
+    set_lyrics(lyrics_string);
+    music_state.lyrics = true;
   } catch (err) {
-    song_state.lyrics = false;
-    song_state.mp3 = false;
+    music_state.lyrics = false;
     if (err instanceof Error) {
       message.error(err.message);
-      return;
+      return void 0;
     }
     message.error('请求似乎出错了哦');
   }
 };
 
-// 音乐mp3源切换
-const current_music_mp3_url = computed(() =>
-  music_player.current_song_value
-    ? `${music_resource_url}/${music_player.current_song_value.id}/music.mp3`
-    : '',
-);
-
-const set_hotkey = async () => {
-  await unregisterAll();
-  await register('F1', (e) => {
-    if (!music_player.current_song_value) return void 0;
-    if (e.state !== 'Pressed') return void 0;
-    if (config_store.play_mode !== PlayMode.script) {
-      modalVal.value = true;
-      return void 0;
-    }
-    music_player.play();
-  });
-  await register('F2', (e) => {
-    if (!music_player.current_song_value) return void 0;
-    if (e.state !== 'Pressed') return void 0;
-    music_player.stop();
-  });
+const init_music_list = async () => {
+  const response = await get_music_list();
+  music_store.set_music_list(response);
 };
+
 const init_app_info = async () => {
   const app_info = await get_app_info();
   Object.assign(config_store.app_info, app_info);
 };
-onMounted(async () => {
-  await set_hotkey();
-  await music_player.init_songs_list();
-  await init_app_info();
-  songs.value = [...music_player.songs_list];
-});
-const audio = useTemplateRef('audio');
-const audio_play = () => {
-  audio.value?.play();
-  state.isPlaying = true;
-};
 
-const audio_pause = () => {
-  state.isPlaying = false;
-  audio.value?.pause();
-};
-
-const previous_track = async () => {
-  audio_pause();
-  await nextTick();
-  audio_end();
-  const length = music_player.songs_list.length;
-  const current_song_id = music_player.current_song_value.id;
-  let pre: null | MusicListItem = null;
-  if (music_player.songs_list[0].id !== current_song_id) {
-    const index = music_player.songs_list.findIndex(
-      (song) => song.id === current_song_id,
-    );
-    pre = music_player.songs_list[index - 1];
-  } else {
-    pre = music_player.songs_list[length - 1];
-  }
-  await set_current_song(pre);
-  audio_play();
-};
-
-const next_track = async () => {
-  audio_pause();
-  audio_end();
-  const length = music_player.songs_list.length;
-  const current_song_id = music_player.current_song_value.id;
-  let next: null | MusicListItem = null;
-  if (music_player.songs_list[length - 1].id !== current_song_id) {
-    const index = music_player.songs_list.findIndex(
-      (song) => song.id === current_song_id,
-    );
-    next = music_player.songs_list[index + 1];
-  } else {
-    next = music_player.songs_list[0];
-  }
-  await set_current_song(next);
-  audio_play();
-};
-
-const audio_end = () => {
-  if (state.isPlaying) state.isPlaying = false;
-  lastIndex = 0;
-  currentIndex.value = 0;
-  lyricsRef.value!.style.marginTop = '0px';
-};
-
-// @future 分割歌词滚动页
-const timeTagRegex = /\[(\d+):(\d+)(?:\.(\d+))?\]/g;
-const trans_lyrics_string = (lyrics_string: string) => {
-  const string_array = lyrics_string.split('\n');
-  let lyrics: Array<{ time: number; content: string }> = [];
-  string_array.forEach((line) => {
-    let match;
-    const content = line.replace(timeTagRegex, '').trim();
-
-    // 提取所有时间标签
-    while ((match = timeTagRegex.exec(line)) !== null) {
-      const mm = parseInt(match[1]);
-      const ss = parseInt(match[2]);
-      const xx = parseInt(match[3]) | 0;
-      const time = mm * 60 + ss + xx / 100;
-
-      lyrics.push({ time, content });
-    }
-  });
-  return lyrics;
-};
-
-// 歌词滚动
-const lyricsRef = useTemplateRef('lyricsRef');
-const currentIndex = ref(0);
-let lastIndex = 0;
-const lyrics_scroll = ({ target }: any) => {
-  const { currentTime } = target;
-  if (currentIndex.value === lyrics_length - 1) return;
-  currentIndex.value = state.music_lyrics.findIndex(
-    (item, index) =>
-      item.time <= currentTime &&
-      currentTime <= state.music_lyrics[index + 1].time,
-  );
-
-  if (lastIndex === currentIndex.value) return;
-  lastIndex = currentIndex.value;
-
-  const htmlElement = document.documentElement;
-  const fontSize = parseFloat(window.getComputedStyle(htmlElement).fontSize);
-  const marginTop = parseFloat(
-    window.getComputedStyle(lyricsRef.value!).marginTop,
-  );
-  const reduceFontSize =
-    state.music_lyrics[currentIndex.value].time ===
-    state.music_lyrics[currentIndex.value - 1].time
-      ? fontSize * 8
-      : fontSize * 4;
-  lyricsRef.value!.style.marginTop = `${marginTop - reduceFontSize}px`;
-};
+use_app_bootstrap(register_shortcuts, init_music_list, init_app_info);
 
 const settings_modal = ref(false);
 const open_settings_modal = () => (settings_modal.value = true);
+const current_time = ref(0);
+const duration = ref(0);
+const mobile_show_lyrics = ref(false);
 
-const songs = ref<MusicList>([]);
-
-const song_filter = (e: ChangeEvent) => {
-  const text = e.target.value?.trim();
-  if (!text) {
-    songs.value = [...music_player.songs_list];
-    return;
-  }
-  songs.value = music_player.songs_list.filter(
-    (song) => song.name.toLowerCase().indexOf(text.toLowerCase()) > -1,
-  );
-};
-
-const modalVal = ref(false);
-const cover_src = computed(
-  () => `${music_resource_url}/${music_player.current_song_value.id}/music.jpg`,
+const cover_src = computed(() =>
+  music_store.current_music
+    ? `${music_resource_url}/${music_store.current_music.id}/music.jpg`
+    : '',
 );
+
+const lyric_ref = useTemplateRef('lyric_ref');
+const audio_play = () => lyric_ref.value?.audio_play();
+const audio_pause = () => lyric_ref.value?.audio_pause();
+const previous_track = () => lyric_ref.value?.previous_track();
+const next_track = () => lyric_ref.value?.next_track();
+const seek_progress = (value: number) =>
+  lyric_ref.value?.seek_audio_progress(value);
+const set_lyrics = (lyrics_string: string) =>
+  lyric_ref.value?.set_lyrics(lyrics_string);
+const on_progress_change = (payload: {
+  current_time: number;
+  duration: number;
+}) => {
+  current_time.value = payload.current_time;
+  duration.value = payload.duration;
+};
+const open_mobile_lyrics = () => {
+  mobile_show_lyrics.value = true;
+};
+const close_mobile_lyrics = () => {
+  mobile_show_lyrics.value = false;
+};
 </script>
 
 <template>
   <ConfigProvider :locale="zhCN">
-    <audio
-      ref="audio"
-      class="audio"
-      :src="current_music_mp3_url"
-      @timeupdate="lyrics_scroll"
-      @ended="audio_end"
-      @canplay="audio_canplay"
-    />
-
-    <Modal
-      v-model:open="modalVal"
-      title="注意！"
-      centered
-      @ok="modalVal = false"
-    >
-      <p>当前处于聆听模式，如需脚本演奏请点击左上角设置修改</p>
-    </Modal>
-    <Modal
-      v-model:open="music_player.continue_play"
-      title="自动演奏中..."
-      centered
-      :footer="null"
-      :closable="false"
-      :keyboard="false"
-      :mask-closable="false"
-      @ok="modalVal = false"
-    >
-      <div
-        style="
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          gap: 1rem;
-        "
-      >
-        <Avatar :size="100" :src="cover_src" />
-        <p style="text-align: center">
-          当前演奏歌曲：{{ music_player.current_song_value.name }}
-        </p>
-        <p style="text-align: center">
-          作者:{{ music_player.current_song_value.author }}
-        </p>
-      </div>
-    </Modal>
-
     <Drawer
       v-model:open="settings_modal"
       placement="left"
@@ -337,108 +144,93 @@ const cover_src = computed(
       <SettingsDrawer />
     </Drawer>
 
-    <div class="left-bar" :class="{ mobile: !isDesktop, desktop: isDesktop }">
-      <div class="settings-open">
-        <Badge :dot="app_version !== config_store.app_info.app_version">
-          <MenuUnfoldOutlined @click="open_settings_modal" class="icon" />
-        </Badge>
-        <Input
-          class="song-filter"
-          @change="song_filter"
-          placeholder="F1开始脚本演奏，F2停止脚本"
-          style="text-align: center"
-        ></Input>
-      </div>
-
-      <div class="music-list-container">
-        <music-list :songs @set_current_song="set_current_song" />
-      </div>
-      <div class="player-button-container" v-if="!isDesktop">
-        <Button @click="previous_track" shape="circle">
-          <template #icon>
-            <LeftOutlined />
-          </template>
-        </Button>
-
-        <Button
-          v-show="!state.isPlaying"
-          @click="audio_play"
-          shape="circle"
-          size="large"
-          :disabled="!music_player.current_song_value"
-        >
-          <template #icon>
-            <CaretRightOutlined />
-          </template>
-        </Button>
-        <Button
-          v-show="state.isPlaying"
-          @click="audio_pause"
-          shape="circle"
-          size="large"
-        >
-          <template #icon>
-            <PauseOutlined />
-          </template>
-        </Button>
-
-        <Button @click="next_track" shape="circle">
-          <template #icon>
-            <RightOutlined />
-          </template>
-        </Button>
-      </div>
-    </div>
     <div
-      class="lyrics-page"
-      :class="{ mobile: !isDesktop, desktop: isDesktop }"
+      class="main-layout"
+      :class="{
+        'mobile': !is_desktop,
+        'desktop': is_desktop,
+        'show-lyrics': mobile_show_lyrics,
+      }"
     >
-      <div ref="lyricsRef" class="music-lyrics">
-        <div
-          v-for="(item, index) in state.music_lyrics"
-          :key="index"
-          :class="{ 'is-current': index === currentIndex }"
-        >
-          {{ item.content }}
+      <div
+        class="left-bar list-face"
+        :class="{ mobile: !is_desktop, desktop: is_desktop }"
+      >
+        <div class="settings-open">
+          <Badge :dot="app_version !== config_store.app_info.app_version">
+            <MenuUnfoldOutlined @click="open_settings_modal" class="icon" />
+          </Badge>
+          <Input
+            class="music-filter"
+            @change="on_music_filter"
+            placeholder="F1开始脚本演奏，F2停止脚本"
+            style="text-align: center"
+          ></Input>
         </div>
+
+        <div class="music-list-container">
+          <music-list
+            :music_list="music_list_display"
+            @set_current_music="set_current_music"
+          />
+        </div>
+        <PlayerControls
+          v-if="!is_desktop"
+          :is_playing="music_store.is_playing"
+          :play_disabled="!music_store.current_music"
+          :current_time="current_time"
+          :duration="duration"
+          :show_lyrics_toggle="true"
+          @audio_play="audio_play"
+          @audio_pause="audio_pause"
+          @previous_track="previous_track"
+          @next_track="next_track"
+          @seek_progress="seek_progress"
+          @toggle_lyrics_view="open_mobile_lyrics"
+        />
       </div>
 
-      <div class="player-button-container">
-        <Button @click="previous_track" shape="circle">
-          <template #icon>
-            <LeftOutlined />
-          </template>
-        </Button>
-
-        <Button
-          v-show="!state.isPlaying"
-          @click="audio_play"
-          shape="circle"
-          size="large"
-          :disabled="!music_player.current_song_value"
-        >
-          <template #icon>
-            <CaretRightOutlined />
-          </template>
-        </Button>
-        <Button
-          v-show="state.isPlaying"
-          @click="audio_pause"
-          shape="circle"
-          size="large"
-        >
-          <template #icon>
-            <PauseOutlined />
-          </template>
-        </Button>
-
-        <Button @click="next_track" shape="circle">
-          <template #icon>
-            <RightOutlined />
-          </template>
-        </Button>
-      </div>
+      <lyrics-page
+        :as_pane="is_desktop"
+        class="lyrics-face"
+        ref="lyric_ref"
+        @set_current_music="set_current_music"
+        @progress_change="on_progress_change"
+        @back_to_list="close_mobile_lyrics"
+      />
     </div>
+
+    <Modal
+      v-model:open="modal_listen_mode"
+      title="注意！"
+      centered
+      @ok="modal_listen_mode = false"
+    >
+      <p>当前处于聆听模式，如需脚本演奏请点击左上角设置修改</p>
+    </Modal>
+    <Modal
+      v-model:open="music_store.continue_play"
+      title="自动演奏中..."
+      centered
+      :footer="null"
+      :closable="false"
+      :keyboard="false"
+      :mask-closable="false"
+    >
+      <div class="current-music">
+        <Avatar :size="100" :src="cover_src" />
+        <p style="text-align: center">
+          当前演奏歌曲：{{
+            music_store.current_music ? music_store.current_music.name : ''
+          }}
+        </p>
+        <p style="text-align: center">
+          作者:{{
+            music_store.current_music ? music_store.current_music.author : ''
+          }}
+        </p>
+      </div>
+    </Modal>
   </ConfigProvider>
 </template>
 
@@ -458,6 +250,32 @@ const cover_src = computed(
   font-size: 24px;
 }
 
+.main-layout {
+  height: 100%;
+  position: relative;
+
+  &.desktop {
+    display: flex;
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+    align-items: stretch;
+    gap: 12px;
+    perspective: 1600px;
+  }
+
+  &.desktop .list-face {
+    transform-origin: right center;
+    transform-style: preserve-3d;
+  }
+
+  &.desktop .lyrics-face {
+    transform-origin: left center;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+  }
+}
+
 .left-bar {
   height: 100%;
   display: flex;
@@ -466,6 +284,7 @@ const cover_src = computed(
 
   &.desktop {
     flex: 1;
+    min-width: 0;
   }
 
   &.mobile {
@@ -475,7 +294,7 @@ const cover_src = computed(
   }
 }
 
-.song-filter {
+.music-filter {
   width: clamp(200px, 80%, 500px);
 }
 
@@ -485,69 +304,64 @@ const cover_src = computed(
   flex: 1;
   overflow-x: hidden;
   overflow-y: scroll;
+  scrollbar-width: thin;
 }
 
-.lyrics-page {
+.current-music {
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-
-  &.desktop {
-    flex: 1;
-  }
-
-  &.mobile {
-    width: 1px;
-    position: absolute;
-    left: 0px;
-    z-index: 1;
-    opacity: 0;
-  }
-}
-
-.music-lyrics {
-  width: 100%;
-  height: calc(100% - 60px);
-  text-align: center;
-  box-sizing: border-box;
-  padding-top: calc((100vh - 60px) / 2 - 2rem);
-  margin: 0;
-
-  scrollbar-width: none;
-  transform: none;
-  transition: all 0.5s;
-  flex: 1;
-
-  div {
-    color: gray;
-    font-size: 1rem;
-    height: 4rem;
-    line-clamp: 2;
-    width: 100%;
-    text-overflow: ellipsis;
-    overflow-wrap: break-word;
-    overflow: hidden;
-
-    &.is-current {
-      font-size: 1.2rem;
-      color: black;
-    }
-  }
-}
-
-.player-button-container {
-  width: 100%;
-  height: 60px;
-  border-radius: 10px;
-  background-color: #efefef;
-  display: flex;
-  justify-content: space-evenly;
+  justify-content: center;
   align-items: center;
+  gap: 1rem;
+}
 
-  .button {
-    font-size: 2.5rem;
-    color: gray;
+@media (max-width: @desktop-breakpoint) {
+  .main-layout.mobile {
+    perspective: 1200px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .list-face,
+  .lyrics-face {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* 书页铰链：列表页绕右边缘，歌词页绕左边缘 */
+  .main-layout.mobile .list-face {
+    transform-origin: right center;
+  }
+
+  .main-layout.mobile .lyrics-face {
+    transform-origin: left center;
+  }
+
+  .main-layout.mobile .list-face {
+    transform: rotateY(0deg);
+    pointer-events: auto;
+  }
+
+  .main-layout.mobile .lyrics-face {
+    transform: rotateY(-180deg);
+    pointer-events: none;
+  }
+
+  .main-layout.mobile.show-lyrics .list-face {
+    transform: rotateY(180deg);
+    pointer-events: none;
+  }
+
+  .main-layout.mobile.show-lyrics .lyrics-face {
+    transform: rotateY(0deg);
+    pointer-events: auto;
   }
 }
 </style>

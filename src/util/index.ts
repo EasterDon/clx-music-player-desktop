@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
 
 export const delay = async (delay_time: number): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -6,7 +6,7 @@ export const delay = async (delay_time: number): Promise<boolean> => {
   });
 };
 
-export const click = async (music_char: string) => {
-  const char_array = Array.from(music_char);
-  await Promise.all(char_array.map((item) => invoke('click', { key: item })));
+export const click = async (music_chars: string) => {
+  const char_array = Array.from(music_chars);
+  await Promise.all(char_array.map((key) => invoke("click", { key })));
 };

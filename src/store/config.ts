@@ -10,12 +10,12 @@ export enum PlayMode {
 export const use_config_store = defineStore('config', () => {
   const play_mode = ref<PlayMode>(PlayMode.listen);
 
-  const app_info = ref({
+  const app_info = ref<App_Info>({
     id: 1,
-    announcement: '',
+    announcement: "",
     app_version,
-    app_download_link: '',
-    app_version_description: '',
+    app_download_link: "",
+    app_version_description: "",
   });
 
   return {
