@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/clx-core", "app-tauri/src-tauri", "app-gpui"]
+
+# 编译配置必须写在 workspace 根目录，写在 member 的 Cargo.toml 里会被 Cargo 忽略。
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

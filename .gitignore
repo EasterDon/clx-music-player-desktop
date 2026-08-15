@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Rust
+/target
+**/target
+*.profraw
+*.gcda
+*.gcno
+
 # Editor directories and files
 .vscode
 .idea
@@ -21,3 +33,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 打包说明仅本地使用，不入库
+*/wix/README.md

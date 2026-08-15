@@ -1,0 +1,40 @@
+[package]
+name = "clx-gpui"
+version = "1.0.2"
+edition = "2024"
+description = "一梦音乐播放器"
+authors = ["EasterDon"]
+license = "AGPL-3.0-only"
+build = "build.rs"
+
+[package.metadata.wix]
+eula = false
+license = false
+# 安装目录：%ProgramFiles%\一梦音乐播放器
+install-dir = "clx-music-player"
+# 开始菜单快捷方式
+enable-elevated-update-task = false
+
+[build-dependencies]
+winres = "0.1"
+
+[build-dependencies.image]
+version = "0.25"
+default-features = false
+features = ["png"]
+
+[build-dependencies.ico]
+version = "0.5"
+
+[dependencies]
+clx-core = { path = "../crates/clx-core" }
+gpui = "^0.2.2"
+serde = { version = "^1", features = ["derive"] }
+serde_json = "^1"
+ureq = { version = "^3.3.0", features = ["json"] }
+kira = { version = "^0.12.0", features = ["mp3"] }
+mp3-duration = "^0.1.10"
+global-hotkey = "^0.8"
+
+[target.'cfg(windows)'.dependencies]
+is_elevated = "0.1"

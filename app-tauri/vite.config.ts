@@ -1,0 +1,47 @@
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+
+// @ts-expect-error process is a nodejs global
+const host = process.env.TAURI_DEV_HOST;
+
+// https://vitejs.dev/config/
+export default defineConfig(async () => ({
+  plugins: [vue()],
+  // 与 GPUI 共用项目根目录 .env，统一使用 CLX_BASE_URL 变量名
+  envDir: "..",
+  // Vite 默认只把 VITE_ 前缀暴露给前端，放开 CLX_ 前缀以支持 CLX_BASE_URL
+  envPrefix: ["VITE_", "CLX_"],
+  resolve:{
+    alias:{
+      "@":"/src"
+    }
+  },
+  css: {
+    preprocessorOptions: {
+      less: {
+        additionalData: '@import "@/assets/breakpoints.less";',
+      },
+    },
+  },
+  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
+  //
+  // 1. prevent vite from obscuring rust errors
+  clearScreen: false,
+  // 2. tauri expects a fixed port, fail if that port is not available
+  server: {
+    port: 1420,
+    strictPort: true,
+    host: host || false,
+    hmr: host
+      ? {
+          protocol: "ws",
+          host,
+          port: 1421,
+        }
+      : undefined,
+    watch: {
+      // 3. tell vite to ignore watching `src-tauri`
+      ignored: ["**/src-tauri/**"],
+    },
+  },
+}));

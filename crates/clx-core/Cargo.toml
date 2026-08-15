@@ -1,0 +1,9 @@
+[package]
+name = "clx-core"
+version = "1.0.2"
+edition = "2021"
+description = "Shared native logic for clx (Tauri, GPUI, etc.)"
+license = "AGPL-3.0-only"
+
+[dependencies]
+enigo = "^0.6.1"
