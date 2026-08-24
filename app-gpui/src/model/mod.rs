@@ -3,7 +3,7 @@ use crate::services::api::{self, AppInfo, MusicItem};
 use crate::services::app_config::{self, AppConfig};
 use crate::services::audio::{AudioBridge, AudioToUi, UiToAudio};
 use crate::services::cover_queue::CoverQueue;
-use crate::services::elevation;
+use clx_core::elevation;
 use crate::services::hotkey::HotkeyKind;
 use crate::services::music_cache;
 use gpui::{Image, ImageFormat};
@@ -14,7 +14,7 @@ use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const APP_VERSION: &str = "1.0.2";
+pub const APP_VERSION: &str = env!("CLX_APP_VERSION");
 
 /// Toast 显示后自动关闭的最长时间。
 pub const TOAST_AUTO_DISMISS_SECS: u64 = 10;

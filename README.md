@@ -1,5 +1,7 @@
 # 一梦音乐播放器 (Clx Music Player)
 
+> 仓库目录名：`clx-music-player-desktop`（双壳桌面客户端，非仅 Tauri）
+
 一个桌面端音乐播放器，除了常规听歌，顺便帮你弹。
 
 ---
@@ -28,7 +30,7 @@
 CLX_BASE_URL=https://你的域名
 ```
 
-接口约定见 `app-gpui/src/services/api.rs` / `app-tauri/src/api/index.ts`。
+接口约定见 `docs/openapi.yaml`、`app-gpui/src/services/api.rs` / `app-tauri/src/api/index.ts`。
 
 ## 构建
 

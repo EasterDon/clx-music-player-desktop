@@ -16,7 +16,21 @@ export const use_app_bootstrap = (
     } catch {
       /* 非 Tauri 环境忽略 */
     }
-    await load_music_list();
-    await load_app_info();
+
+    try {
+      await load_music_list();
+    } catch (err) {
+      message.error(
+        err instanceof Error ? err.message : "获取歌曲列表失败",
+      );
+    }
+
+    try {
+      await load_app_info();
+    } catch (err) {
+      message.error(
+        err instanceof Error ? err.message : "获取软件信息失败",
+      );
+    }
   });
 };

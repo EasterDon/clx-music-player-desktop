@@ -1,7 +1,5 @@
-mod app_config;
-mod elevation;
-
 use clx_core::SharedEnigo;
+use clx_core::{app_config, elevation};
 use serde::Serialize;
 use tauri::State;
 

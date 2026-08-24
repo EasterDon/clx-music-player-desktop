@@ -12,4 +12,4 @@ export const desktop_breakpoint = 1020;
  * - 使用样式变量的文件：src/App.vue、src/components/Lyrics/index.vue、src/components/MusicList/index.vue、src/main.less
  */
 
-export const app_version = '1.0.2';
+export const app_version = __APP_VERSION__;

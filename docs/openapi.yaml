@@ -1,0 +1,198 @@
+openapi: 3.1.0
+info:
+  title: 一梦音乐播放器 API
+  version: 3.0.0
+  description: |
+    v3 接口与 Node 服务端 `clx-music-player-server` 一致。
+    成功响应统一为 `{ data, message }`；错误为 `{ message, data: null }`。
+
+servers:
+  - url: https://example.com
+    description: 由客户端构建时注入的 CLX_BASE_URL
+
+paths:
+  /v3/music:
+    get:
+      summary: 歌曲列表
+      operationId: getMusicList
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MusicListEnvelope"
+
+  /v3/music/{music_id}/notation:
+    get:
+      summary: 字母谱（演奏用）
+      operationId: getMusicNotation
+      parameters:
+        - $ref: "#/components/parameters/MusicId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotationEnvelope"
+
+  /v3/music/{music_id}/lyrics:
+    get:
+      summary: 歌词（LRC 纯文本）
+      operationId: getMusicLyrics
+      parameters:
+        - $ref: "#/components/parameters/MusicId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LyricsEnvelope"
+
+  /v3/app:
+    get:
+      summary: 软件版本信息
+      operationId: getAppInfo
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppInfoEnvelope"
+
+  /music/{music_id}/music.mp3:
+    get:
+      summary: MP3 音频（支持 Range）
+      operationId: getMusicMp3
+      parameters:
+        - $ref: "#/components/parameters/MusicId"
+      responses:
+        "200":
+          description: 完整文件或 Range 片段
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+
+  /music/{music_id}/music.jpg:
+    get:
+      summary: 封面 JPEG
+      operationId: getMusicCover
+      parameters:
+        - $ref: "#/components/parameters/MusicId"
+      responses:
+        "200":
+          description: 封面图
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+
+components:
+  parameters:
+    MusicId:
+      name: music_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  schemas:
+    ApiEnvelope:
+      type: object
+      required: [data, message]
+      properties:
+        data: {}
+        message:
+          type: string
+
+    ApiError:
+      type: object
+      required: [message, data]
+      properties:
+        message:
+          type: string
+        data:
+          type: "null"
+
+    MusicItem:
+      type: object
+      required: [id, author, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        author:
+          type: string
+        name:
+          type: string
+
+    MusicListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/MusicItem"
+
+    NotationItem:
+      oneOf:
+        - type: string
+          description: 按键字符
+        - type: integer
+          description: 延时（毫秒）
+
+    NotationEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/NotationItem"
+
+    LyricsEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: string
+              description: LRC 格式歌词全文
+
+    AppInfo:
+      type: object
+      required:
+        - id
+        - announcement
+        - app_version
+        - app_download_link
+        - app_version_description
+      properties:
+        id:
+          type: integer
+        announcement:
+          type: string
+        app_version:
+          type: string
+        app_download_link:
+          type: string
+        app_version_description:
+          type: string
+
+    AppInfoEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AppInfo"

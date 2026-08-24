@@ -2,6 +2,7 @@
 //! 运行时无需任何配置文件。Windows 下同时从 `assets/icon.png` 生成 ICO 并嵌入 exe。
 
 fn main() {
+    println!("cargo:rustc-env=CLX_APP_VERSION={}", env!("CARGO_PKG_VERSION"));
     embed_base_url_from_env_file();
 
     #[cfg(windows)]

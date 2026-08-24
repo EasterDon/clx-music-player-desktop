@@ -86,3 +86,22 @@ pub fn lyric_index_at_time(lines: &[LyricLine], time: f64) -> Option<usize> {
     }
     idx
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_lrc_basic() {
+        let lines = parse_lrc_text("[00:01.00]hello\n[00:02.00]world");
+        assert_eq!(lines.len(), 2);
+        assert!((lines[0].time - 1.0).abs() < f64::EPSILON);
+        assert_eq!(lines[0].content, "hello");
+    }
+
+    #[test]
+    fn lyric_index_at_time_picks_active_line() {
+        let lines = parse_lrc_text("[00:00.00]a\n[00:05.00]b\n[00:10.00]c");
+        assert_eq!(lyric_index_at_time(&lines, 5.5), Some(1));
+    }
+}

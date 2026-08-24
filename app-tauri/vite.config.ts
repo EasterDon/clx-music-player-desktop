@@ -1,12 +1,17 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import { readWorkspaceVersion } from "../scripts/sync-version.mjs";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+const app_version = readWorkspaceVersion();
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [vue()],
+  define: {
+    __APP_VERSION__: JSON.stringify(app_version),
+  },
   // 与 GPUI 共用项目根目录 .env，统一使用 CLX_BASE_URL 变量名
   envDir: "..",
   // Vite 默认只把 VITE_ 前缀暴露给前端，放开 CLX_ 前缀以支持 CLX_BASE_URL

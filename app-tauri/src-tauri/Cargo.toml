@@ -1,9 +1,9 @@
 [package]
 name = "clx_music_player"
-version = "1.0.2"
+version.workspace = true
 description = "一梦音乐播放器"
-authors = ["EasterDon"]
-license = "AGPL-3.0-only"
+authors.workspace = true
+license.workspace = true
 edition = "2024"
 
 [lib]
@@ -23,6 +23,3 @@ tauri-plugin-shell = "^2.0.0"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "^2.0.0"
-
-[target.'cfg(windows)'.dependencies]
-is_elevated = "0.1"

@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rustc-env=CLX_APP_VERSION={}", env!("CARGO_PKG_VERSION"));
     let mut windows = tauri_build::WindowsAttributes::new();
     let manifest = r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">

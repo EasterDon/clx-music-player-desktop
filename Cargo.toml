@@ -2,6 +2,11 @@
 resolver = "2"
 members = ["crates/clx-core", "app-tauri/src-tauri", "app-gpui"]
 
+[workspace.package]
+version = "1.0.2"
+authors = ["EasterDon"]
+license = "AGPL-3.0-only"
+
 # 编译配置必须写在 workspace 根目录，写在 member 的 Cargo.toml 里会被 Cargo 忽略。
 [profile.dev]
 incremental = true

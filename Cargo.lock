@@ -1087,6 +1087,7 @@ name = "clx-core"
 version = "1.0.2"
 dependencies = [
  "enigo",
+ "is_elevated",
 ]
 
 [[package]]
@@ -1098,7 +1099,6 @@ dependencies = [
  "gpui",
  "ico",
  "image",
- "is_elevated",
  "kira",
  "mp3-duration",
  "serde",
@@ -1112,7 +1112,6 @@ name = "clx_music_player"
 version = "1.0.2"
 dependencies = [
  "clx-core",
- "is_elevated",
  "serde",
  "serde_json",
  "tauri",

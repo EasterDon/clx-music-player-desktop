@@ -1,8 +1,10 @@
 //! 可被 Tauri、GPUI 等壳复用的应用逻辑。
-//! 各 UI 包若需键盘/输入模拟，应只依赖本库。
 
 use enigo::{Direction, Key, Keyboard, Settings};
 use std::sync::{Arc, Mutex};
+
+pub mod app_config;
+pub mod elevation;
 
 pub use enigo::{Enigo, InputError, NewConError};
 

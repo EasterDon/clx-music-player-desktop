@@ -1,9 +1,12 @@
 [package]
 name = "clx-core"
-version = "1.0.2"
+version.workspace = true
 edition = "2021"
 description = "Shared native logic for clx (Tauri, GPUI, etc.)"
-license = "AGPL-3.0-only"
+license.workspace = true
 
 [dependencies]
 enigo = "^0.6.1"
+
+[target.'cfg(windows)'.dependencies]
+is_elevated = "0.1"

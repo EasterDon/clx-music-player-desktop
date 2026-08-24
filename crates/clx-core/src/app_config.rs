@@ -89,3 +89,24 @@ pub fn save(config: &AppConfig) -> Result<(), String> {
         .map_err(|e| format!("写入配置失败: {e}"))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_ini_bool_variants() {
+        let cfg = parse_ini("loadByAdministrator=true\n");
+        assert!(cfg.launch_as_administrator);
+        let cfg = parse_ini("loadByAdministrator=0\n");
+        assert!(!cfg.launch_as_administrator);
+    }
+
+    #[test]
+    fn parse_ini_ignores_comments_and_blank_lines() {
+        let cfg = parse_ini(
+            "; comment\n\n# also\nloadByAdministrator=yes\n",
+        );
+        assert!(cfg.launch_as_administrator);
+    }
+}
