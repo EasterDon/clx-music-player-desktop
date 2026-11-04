@@ -1,6 +1,6 @@
 use crate::services::api::MusicItem;
-use gpui::Pixels;
-use gpui::px;
+use gpui_kit::Pixels;
+use gpui_kit::px;
 
 pub(crate) const GRID_CARD_FIX_W: f32 = 138.0;
 pub(crate) const GRID_CARD_FIX_H: f32 = 196.0;

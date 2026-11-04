@@ -1,78 +1,54 @@
-use crate::ui::theme::*;
-use gpui::prelude::*;
-use gpui::*;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::notification::Notification;
+use gpui_kit::component::dialog::{DialogDescription, DialogTitle};
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 
-pub(crate) fn script_modal(_model: Entity<crate::model::ClxState>, title: String, author: String) -> impl IntoElement {
-    div()
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .bottom_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .bg(hsla(0., 0., 0., OVERLAY_SCRIM_A))
-        .child(
-            div()
-                .w(px(400.0))
-                .bg(rgb(BG_MODAL))
-                .border_1()
-                .border_color(rgb(SEPARATOR))
-                .rounded(px(14.0))
-                .p(px(24.0))
-                .flex()
-                .flex_col()
-                .gap(px(12.0))
-                .items_center()
-                .text_color(rgb(TEXT_PRIMARY))
-                .child(div().font_weight(FontWeight(700.0)).child("自动演奏中…"))
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(rgb(TEXT_SECONDARY))
-                        .child(format!("当前演奏歌曲：{title}")),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(rgb(TEXT_SECONDARY))
-                        .child(format!("作者：{author}")),
-                )
-                .child(
-                    div()
-                        .mt(px(8.0))
-                        .text_xs()
-                        .text_color(rgb(TEXT_TERTIARY))
-                        .child("按 F2 可停止"),
-                ),
-        )
+/// 脚本演奏提示框。
+///
+/// 使用组件库的 `Dialog`，由窗口层统一绘制遮罩、圆角与动画，
+/// 关闭时调用 `window.close_dialog`。
+pub(crate) fn open_script_dialog(
+    window: &mut Window,
+    cx: &mut App,
+    title: String,
+    author: String,
+) {
+    window.open_dialog(cx, move |dialog, _, _| {
+        dialog
+            .title(DialogTitle::new().child("自动演奏中…"))
+            .child(
+                DialogDescription::new()
+                    .child(format!("当前演奏歌曲：{title}")),
+            )
+            .child(DialogDescription::new().child(format!("作者：{author}")))
+            .child(DialogDescription::new().child("按 F2 可停止"))
+    });
 }
 
-pub(crate) fn toast_overlay(
-    msg: String,
-    dismiss: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .absolute()
-        .bottom(px(24.0))
-        .left_0()
-        .right_0()
-        .flex()
-        .flex_col()
-        .items_center()
-        .child(
-            div()
-                .max_w(px(520.0))
-                .bg(rgb(BG_SURFACE))
-                .text_color(rgb(TEXT_PRIMARY))
-                .rounded(px(20.0))
-                .px(px(16.0))
-                .py(px(10.0))
-                .text_sm()
-                .cursor_pointer()
-                .child(msg)
-                .id("toast-dismiss")
-                .on_click(dismiss),
-        )
+/// 关闭脚本演奏提示框。
+pub(crate) fn close_script_dialog(window: &mut Window, cx: &mut App) {
+    if window.has_active_dialog(cx) {
+        window.close_dialog(cx);
+    }
+}
+
+
+/// 应用级 toast 的唯一标识类型。
+struct ClxToast;
+
+/// 用组件库的通知层展示一条 toast。
+///
+/// 沿用 `ClxState` 的 toast 队列与自动消失计时（数据来源不变），
+/// 只把展示交给 `NotificationList`；同一 `ClxToast` 类型下最多保留一条。
+pub(crate) fn push_toast_notification(window: &mut Window, cx: &mut App, msg: String) {
+    window.push_notification(
+        Notification::info(msg).id::<ClxToast>(),
+        cx,
+    );
+}
+
+/// 没有新 toast 时清掉仍在显示的旧通知。
+pub(crate) fn clear_toast_notifications(window: &mut Window, cx: &mut App) {
+    window.remove_notification::<ClxToast>(cx);
 }

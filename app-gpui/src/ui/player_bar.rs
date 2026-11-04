@@ -1,33 +1,88 @@
 use crate::model::ClxState;
 use crate::ui::theme::*;
-use gpui::prelude::*;
-use gpui::*;
-
-const ICON_PREV: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/skip-previous.svg");
-const ICON_NEXT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/skip-next.svg");
-const ICON_PLAY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/play.svg");
-const ICON_PAUSE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/pause.svg");
+use gpui_kit::component::Disableable;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
+use gpui_kit::prelude::*;
+use gpui_kit::Subscription;
+use gpui_kit::*;
 
 const TRANSPORT_SIDE: f32 = 36.0;
 const TRANSPORT_MAIN: f32 = 44.0;
 const ICON_SIDE: f32 = 18.0;
 const ICON_MAIN: f32 = 22.0;
 
+/// 播放控制栏。
+///
+/// 进度条由 `gpui_kit::component::slider::Slider` 承担：`SliderEvent::Change` 在
+/// 拖动过程中连续触发，`SliderEvent::Release` 在松手时触发。拖动中的秒数记录在
+/// `PlayerBarView::drag_frac`，避免与播放进度回写互相拉扯。
 pub struct PlayerBarView {
     pub model: Entity<ClxState>,
-    pub progress_dragging: bool,
-    pub progress_track_bounds: Option<Bounds<Pixels>>,
+    progress: Entity<SliderState>,
+    /// 正在拖动进度条。
+    progress_dragging: bool,
+    /// 拖动中的实时进度比例 0..1（松手后复位为 None）。
+    drag_frac: Option<f32>,
+    /// 刚松开滑条、已发起 seek 但音频位置尚未跟上的目标比例。
+    ///
+    /// 松手瞬间 `current_time` 还是旧值，若立刻按它回写滑条，会把刚拖到的位置
+    /// 拽回原处（表现为“点了又跳回去”）。此期间以目标比例为准。
+    pending_seek: Option<f32>,
+    /// 上一次写回 SliderState 的秒数，用于避免重复 set_value。
+    synced_secs: f32,
+    /// 必须持有：`Subscription` 一旦被 drop 就会取消订阅。
+    _progress_sub: Subscription,
 }
 
 impl PlayerBarView {
     pub fn new(model: Entity<ClxState>, cx: &mut Context<Self>) -> Self {
+        let progress = cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(1.0)
+                .step(0.1)
+                .default_value(0.0)
+        });
+
+        let progress_sub = cx.subscribe(&progress, |this, _, event: &SliderEvent, cx| match event {
+            SliderEvent::Change(value) => {
+                this.progress_dragging = true;
+                this.drag_frac = Some(value.end());
+                cx.notify();
+            }
+            SliderEvent::Release(value) => {
+                // 滑条量程是 0..1 的比例，必须乘回时长才是秒数。
+                let frac = value.end();
+                this.progress_dragging = false;
+                this.drag_frac = None;
+                this.synced_secs = frac;
+                this.pending_seek = Some(frac);
+                let model = this.model.clone();
+                let _ = cx.update_entity(&model, |st, c| {
+                    if st.duration > 0.0 {
+                        let cap = st.buffered_end_secs().max(0.0);
+                        let secs = (frac as f64 * st.duration).min(cap).max(0.0);
+                        st.seek(secs);
+                    }
+                    c.notify();
+                });
+                cx.notify();
+            }
+        });
+
         let _ = cx.observe(&model, |_, _, cx| {
             cx.notify();
         });
+
         Self {
             model,
+            progress,
             progress_dragging: false,
-            progress_track_bounds: None,
+            drag_frac: None,
+            pending_seek: None,
+            synced_secs: -1.0,
+            _progress_sub: progress_sub,
         }
     }
 }
@@ -42,400 +97,239 @@ fn fmt_time(sec: f64) -> String {
     format!("{mm:02}:{ss:02}")
 }
 
-fn seek_secs_at(pos: Point<Pixels>, bounds: Bounds<Pixels>, dur: f64, max_seek: f64) -> f64 {
-    if dur <= 0.0 {
-        return 0.0;
-    }
-    let width = bounds.size.width.to_f64();
-    if width <= 0.0 {
-        return 0.0;
-    }
-    let x = (pos.x - bounds.origin.x).to_f64();
-    let frac = (x / width).clamp(0.0, 1.0);
-    (frac * dur).min(max_seek.max(0.0))
-}
+impl Render for PlayerBarView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let model = self.model.clone();
+        let colors = Palette::from(cx);
 
-struct ProgressTrackElement {
-    player: Entity<PlayerBarView>,
-    model: Entity<ClxState>,
-    play_frac: f32,
-    buffered_frac: f32,
-    dur: f64,
-    max_seek: f64,
-    interactive: bool,
-}
+        let (is_playing, ct, dur, play_disabled, max_seek) =
+            cx.read_entity(&self.model, |s, _| {
+                (
+                    s.is_playing,
+                    s.current_time,
+                    s.duration,
+                    s.current.is_none(),
+                    s.buffered_end_secs(),
+                )
+            });
 
-impl Element for ProgressTrackElement {
-    type RequestLayoutState = ();
-    type PrepaintState = Option<Hitbox>;
+        // 量程固定为 0..1（归一化），进度换算成比例写回 SliderState；
+        // 这样时长变化时无需重建 slider 实体。
+        // 与原始实现一致：只有在有歌曲、有时长、且已有可 seek 的缓冲时才允许拖动。
+        // 否则刚加载时 buffer 接近 0，seek 会被 clamp 到开头（表现为“点一下就回到第一秒”）。
+        let seekable = !play_disabled && dur > 0.0 && max_seek > 0.0;
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
+        // 松手后的目标比例：等音频位置真正跟上（误差 < 1%）再交还给播放进度。
+        if let Some(target) = self.pending_seek {
+            let reached = dur > 0.0 && ((ct / dur) as f32 - target).abs() < 0.01;
+            if reached || !seekable {
+                self.pending_seek = None;
+            }
+        }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style::default();
-        style.flex_grow = 1.0;
-        style.flex_shrink = 1.0;
-        style.flex_basis = relative(0.).into();
-        style.size.width = relative(1.).into();
-        style.size.height = px(16.).into();
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self::PrepaintState {
-        let _ = self.player.update(cx, |player, _| {
-            player.progress_track_bounds = Some(bounds);
-        });
-        if self.interactive {
-            Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+        let frac = if seekable {
+            match self.drag_frac.or(self.pending_seek) {
+                // 拖动中/刚松手：用滑条比例，避免与播放进度互相拉扯。
+                Some(f) => f.clamp(0.0, 1.0),
+                None => (ct / dur).clamp(0.0, 1.0) as f32,
+            }
         } else {
-            None
-        }
-    }
-
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
-        hitbox: &mut Self::PrepaintState,
-        window: &mut Window,
-        _cx: &mut App,
-    ) {
-        let bar_h = px(6.0);
-        let bar_top = bounds.top() + (bounds.size.height - bar_h) / 2.;
-        let bar_bounds = Bounds::new(
-            point(bounds.left(), bar_top),
-            size(bounds.size.width, bar_h),
-        );
-        window.paint_quad(fill(bar_bounds, rgb(PROGRESS_TRACK)));
-
-        let buffered_w = bounds.size.width * self.buffered_frac;
-        if buffered_w > px(0.0) {
-            let buffered_bounds = Bounds::new(
-                point(bounds.left(), bar_top),
-                size(buffered_w.max(px(2.0)), bar_h),
-            );
-            window.paint_quad(fill(buffered_bounds, rgb(PROGRESS_BUFFERED)));
-        }
-
-        let fill_w = bounds.size.width * self.play_frac;
-        if fill_w > px(0.0) {
-            let fill_bounds = Bounds::new(
-                point(bounds.left(), bar_top),
-                size(fill_w.max(px(2.0)), bar_h),
-            );
-            window.paint_quad(fill(fill_bounds, rgb(PROGRESS_FILL)));
-        }
-
-        let Some(hitbox) = hitbox.clone() else {
-            return;
+            0.0
         };
 
-        let player = self.player.clone();
-        let model = self.model.clone();
-        let dur = self.dur;
-        let max_seek = self.max_seek;
+        if !self.progress_dragging && (self.synced_secs - frac).abs() > 0.001 {
+            self.synced_secs = frac;
+            self.progress.update(cx, |state, cx| {
+                state.set_value(frac, window, cx);
+            });
+        }
 
-        window.on_mouse_event({
-            let hitbox = hitbox.clone();
-            let player = player.clone();
-            let model = model.clone();
-            move |event: &MouseDownEvent, phase, window, cx| {
-                if phase != DispatchPhase::Bubble
-                    || event.button != MouseButton::Left
-                    || !hitbox.is_hovered(window)
-                {
-                    return;
-                }
-                let Some(bounds) =
-                    cx.read_entity(&player, |p, _| p.progress_track_bounds)
-                else {
-                    return;
-                };
-                let sec = seek_secs_at(event.position, bounds, dur, max_seek);
-                let _ = cx.update_entity(&player, |p, c| {
-                    p.progress_dragging = true;
-                    c.notify();
-                });
-                let _ = cx.update_entity(&model, |st, c| {
-                    st.seek(sec);
-                    c.notify();
-                });
-            }
-        });
+        // 左侧时间文案：拖动中按比例换回秒数显示。
+        let shown_secs = match self.drag_frac.or(self.pending_seek) {
+            Some(f) => (f as f64 * dur).clamp(0.0, dur),
+            None => ct,
+        };
 
-        window.on_mouse_event({
-            let player = player.clone();
-            move |_: &MouseUpEvent, phase, _, cx| {
-                if phase != DispatchPhase::Bubble {
-                    return;
-                }
-                let _ = cx.update_entity(&player, |p, c| {
-                    p.progress_dragging = false;
-                    c.notify();
-                });
-            }
-        });
+        let side_color = colors.text_secondary;
+        let main_color = if play_disabled {
+            // 禁用态仍要能看出这是一个播放按钮：用次要文字色而非最浅的辅助色。
+            colors.text_secondary
+        } else {
+            colors.accent_fg
+        };
 
-        window.on_mouse_event({
-            let player = player.clone();
-            let model = model.clone();
-            move |event: &MouseMoveEvent, phase, _window, cx| {
-                if phase != DispatchPhase::Bubble {
-                    return;
-                }
-                let dragging = cx.read_entity(&player, |p, _| p.progress_dragging);
-                if !dragging {
-                    return;
-                }
-                let Some(bounds) =
-                    cx.read_entity(&player, |p, _| p.progress_track_bounds)
-                else {
-                    return;
-                };
-                let sec = seek_secs_at(event.position, bounds, dur, max_seek);
-                let _ = cx.update_entity(&model, |st, c| {
-                    st.seek(sec);
-                    c.notify();
-                });
-            }
-        });
-    }
-}
-
-impl IntoElement for ProgressTrackElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
-impl Render for PlayerBarView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let player = cx.entity();
-        let model = self.model.clone();
-
-        cx.read_entity(&self.model, move |s, _| {
-            let is_playing = s.is_playing;
-            let ct = s.current_time;
-            let dur = s.duration;
-            let play_disabled = s.current.is_none();
-            let m = model.clone();
-
-            let side_icon = rgb(TEXT_SECONDARY);
-            let main_icon = if play_disabled {
-                rgb(TEXT_TERTIARY)
-            } else {
-                rgb(0xffffff)
-            };
-
-            let controls = div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_center()
-                .gap(px(20.0))
-                .child({
-                    let m_prev = m.clone();
-                    transport_side_btn(
-                        "player-prev",
-                        ICON_PREV,
-                        side_icon,
-                        move |_, _, cx| {
-                            let _ = cx.update_entity(&m_prev, |s, c| {
-                                s.previous_track();
-                                c.notify();
-                            });
-                        },
-                    )
-                })
-                .child(if is_playing {
-                    let m = m.clone();
-                    transport_main_btn(
-                        "player-pause",
-                        ICON_PAUSE,
-                        play_disabled,
-                        main_icon,
-                        move |_, _, cx| {
-                            let _ = cx.update_entity(&m, |st, c| {
-                                st.pause_playback();
-                                c.notify();
-                            });
-                        },
-                    )
-                    .into_any_element()
-                } else {
-                    let m = m.clone();
-                    transport_main_btn(
-                        "player-play",
-                        ICON_PLAY,
-                        play_disabled,
-                        main_icon,
-                        move |_, _, cx| {
-                            let _ = cx.update_entity(&m, |st, c| {
-                                st.play_playback();
-                                c.notify();
-                            });
-                        },
-                    )
-                    .into_any_element()
-                })
-                .child({
-                    let m_next = m.clone();
-                    transport_side_btn(
-                        "player-next",
-                        ICON_NEXT,
-                        side_icon,
-                        move |_, _, cx| {
-                            let _ = cx.update_entity(&m_next, |s, c| {
-                                s.next_track();
-                                c.notify();
-                            });
-                        },
-                    )
-                });
-
-            let play_frac = if dur > 0.0 {
-                (ct / dur).clamp(0.0, 1.0) as f32
-            } else {
-                0.0
-            };
-            let max_seek = s.buffered_end_secs();
-            let buffered_frac = if dur > 0.0 {
-                (max_seek / dur).clamp(0.0, 1.0) as f32
-            } else if s.load_total_bytes.is_some_and(|t| t > 0) {
-                (s.load_bytes as f64 / s.load_total_bytes.unwrap_or(1) as f64)
-                    .clamp(0.0, 1.0) as f32
-            } else {
-                0.0
-            };
-
-            let track = ProgressTrackElement {
-                player: player.clone(),
-                model: m.clone(),
-                play_frac,
-                buffered_frac,
-                dur,
-                max_seek,
-                interactive: !play_disabled && dur > 0.0 && max_seek > 0.0,
-            };
-
-            div()
-                .w_full()
-                .flex()
-                .flex_col()
-                .gap(px(8.0))
-                .p(px(12.0))
-                .bg(rgb(BG_ELEVATED))
-                .border_t_1()
-                .border_color(rgb(SEPARATOR))
-                .text_color(rgb(TEXT_PRIMARY))
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .w_full()
-                        .min_w(px(0.0))
-                        .child(
-                            div()
-                                .flex_none()
-                                .w(px(40.0))
-                                .text_xs()
-                                .text_color(rgb(TEXT_SECONDARY))
-                                .child(fmt_time(ct)),
-                        )
-                        .child(track)
-                        .child(
-                            div()
-                                .flex_none()
-                                .w(px(40.0))
-                                .text_xs()
-                                .text_color(rgb(TEXT_SECONDARY))
-                                .child(fmt_time(dur)),
-                        ),
+        let controls = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .gap(px(20.0))
+            .child({
+                let m = model.clone();
+                transport_button(
+                    &colors,
+                    "player-prev",
+                    IconKind::Prev,
+                    ICON_SIDE,
+                    side_color,
+                    TRANSPORT_SIDE,
+                    TransportKind::Side,
+                    false,
+                    move |_, _, cx| {
+                        let _ = cx.update_entity(&m, |s, c| {
+                            s.previous_track();
+                            c.notify();
+                        });
+                    },
                 )
-                .child(controls)
-        })
+            })
+            .child({
+                let m = model.clone();
+                let kind = if is_playing { IconKind::Pause } else { IconKind::Play };
+                let id = if is_playing { "player-pause" } else { "player-play" };
+                transport_button(
+                    &colors,
+                    id,
+                    kind,
+                    ICON_MAIN,
+                    main_color,
+                    TRANSPORT_MAIN,
+                    TransportKind::Main,
+                    play_disabled,
+                    move |_, _, cx| {
+                        let _ = cx.update_entity(&m, |st, c| {
+                            if st.is_playing {
+                                st.pause_playback();
+                            } else {
+                                st.play_playback();
+                            }
+                            c.notify();
+                        });
+                    },
+                )
+            })
+            .child({
+                let m = model.clone();
+                transport_button(
+                    &colors,
+                    "player-next",
+                    IconKind::Next,
+                    ICON_SIDE,
+                    side_color,
+                    TRANSPORT_SIDE,
+                    TransportKind::Side,
+                    false,
+                    move |_, _, cx| {
+                        let _ = cx.update_entity(&m, |s, c| {
+                            s.next_track();
+                            c.notify();
+                        });
+                    },
+                )
+            });
+
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .p(px(12.0))
+            .bg(colors.bg_elevated)
+            .border_t_1()
+            .border_color(colors.separator)
+            .text_color(colors.text_primary)
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .w_full()
+                    .min_w(px(0.0))
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(40.0))
+                            .text_xs()
+                            .text_color(colors.text_secondary)
+                            .child(fmt_time(shown_secs)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .child(Slider::new(&self.progress).disabled(!seekable)),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(40.0))
+                            .text_xs()
+                            .text_color(colors.text_secondary)
+                            .child(fmt_time(dur)),
+                    ),
+            )
+            .child(controls)
     }
 }
 
-fn transport_icon(path: &'static str, size: f32, color: impl Into<Hsla>) -> impl IntoElement {
-    svg()
-        .path(path)
-        .size(px(size))
-        .text_color(color)
+#[derive(Clone, Copy)]
+enum IconKind {
+    Prev,
+    Next,
+    Play,
+    Pause,
 }
 
-fn transport_side_btn(
-    id: &'static str,
-    icon_path: &'static str,
-    icon_color: impl Into<Hsla>,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .w(px(TRANSPORT_SIDE))
-        .h(px(TRANSPORT_SIDE))
-        .min_w(px(TRANSPORT_SIDE))
-        .min_h(px(TRANSPORT_SIDE))
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .bg(rgb(CTRL_BTN_BG))
-        .cursor_pointer()
-        .child(transport_icon(icon_path, ICON_SIDE, icon_color))
-        .id(id)
-        .on_click(on_click)
+#[derive(Clone, Copy)]
+enum TransportKind {
+    Side,
+    Main,
 }
 
-fn transport_main_btn(
+fn icon_path(kind: IconKind) -> &'static str {
+    match kind {
+        IconKind::Prev => concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/skip-previous.svg"),
+        IconKind::Next => concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/skip-next.svg"),
+        IconKind::Play => concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/play.svg"),
+        IconKind::Pause => concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/pause.svg"),
+    }
+}
+
+/// 用组件库 `Button` 承载播放控制的圆形图标按钮。
+#[allow(clippy::too_many_arguments)]
+fn transport_button(
+    colors: &Palette,
     id: &'static str,
-    icon_path: &'static str,
+    kind: IconKind,
+    icon_size: f32,
+    icon_color: Hsla,
+    size: f32,
+    transport: TransportKind,
     disabled: bool,
-    icon_color: impl Into<Hsla>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let mut btn = div()
-        .w(px(TRANSPORT_MAIN))
-        .h(px(TRANSPORT_MAIN))
-        .min_w(px(TRANSPORT_MAIN))
-        .min_h(px(TRANSPORT_MAIN))
+    let btn = Button::new(id)
+        .child(
+            svg()
+                .path(icon_path(kind))
+                .size(px(icon_size))
+                .text_color(icon_color),
+        )
+        .disabled(disabled)
+        .w(px(size))
+        .h(px(size))
+        .min_w(px(size))
+        .min_h(px(size))
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
         .rounded_full()
-        .child(transport_icon(icon_path, ICON_MAIN, icon_color))
-        .id(id);
-    if disabled {
-        btn = btn.bg(rgb(BG_SURFACE)).cursor_default();
-    } else {
-        btn = btn.bg(rgb(ACCENT)).cursor_pointer().on_click(on_click);
+        .on_click(on_click);
+
+    match transport {
+        TransportKind::Main => btn.bg(if disabled { colors.bg_selected } else { colors.accent }),
+        TransportKind::Side => btn.bg(colors.ctrl_btn_bg),
     }
-    btn
 }

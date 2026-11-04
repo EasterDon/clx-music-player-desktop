@@ -12,12 +12,15 @@ use crate::ui::root::mobile::{
     mobile_page_stack,
 };
 use crate::ui::root::music_list::music_list_panel;
-use crate::ui::root::overlays::{script_modal, toast_overlay};
+use crate::ui::root::overlays::{
+    clear_toast_notifications, close_script_dialog, open_script_dialog,
+    push_toast_notification,
+};
 use crate::ui::settings_drawer::settings_drawer;
 use crate::ui::theme::*;
 use global_hotkey::GlobalHotKeyManager;
-use gpui::prelude::*;
-use gpui::*;
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -52,6 +55,10 @@ pub struct RootView {
     layout_desktop_target: f32,
     /// 首帧将 motion 与当前窗口尺寸对齐，避免启动时布局插值为 0。
     motion_bootstrapped: bool,
+    /// 脚本演奏提示框当前是否已弹出（跟随 `ClxState::modal_script`）。
+    script_dialog_open: bool,
+    /// 当前已推送为通知的 toast 文案，用于判断是否需要更新通知层。
+    toast_shown: Option<String>,
 }
 
 fn dispatch_ui_refresh(
@@ -92,7 +99,7 @@ impl RootView {
         cx: &mut Context<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
-        focus_handle.focus(window);
+        focus_handle.focus(window, cx);
         let player_bar = cx.new(|cx| PlayerBarView::new(model.clone(), cx));
         let lyrics_pane =
             cx.new(|cx| LyricsPaneView::new(model.clone(), cx));
@@ -100,8 +107,9 @@ impl RootView {
         let m_poll = model.clone();
         let weak_root = cx.weak_entity();
         let hotkey_ids_poll = hotkey_ids.clone();
+        // 搜索框内部的 InputState 需要窗口句柄，故在此同步构建。
         let music_filter = cx.new(|cx| {
-            MusicFilterInput::new(model.clone(), weak_root.clone(), cx)
+            MusicFilterInput::new(model.clone(), weak_root.clone(), window, cx)
         });
         let player_spawn = player_bar.clone();
         let lyrics_spawn = lyrics_pane.clone();
@@ -112,9 +120,8 @@ impl RootView {
                     .timer(Duration::from_millis(50))
                     .await;
                 while let Ok(task) = task_rx.try_recv() {
-                    let refresh = async_cx
-                        .update_entity(&m_poll, |s, _| s.apply_main_task(task))
-                        .unwrap_or(UiRefresh::None);
+                    let refresh =
+                        async_cx.update_entity(&m_poll, |s, _| s.apply_main_task(task));
                     dispatch_ui_refresh(
                         refresh,
                         &weak_root,
@@ -126,11 +133,9 @@ impl RootView {
                 if let Ok(guard) = hotkey_ids_poll.lock() {
                     if let Some(ref ids) = *guard {
                         for k in hotkey::poll_hotkeys(ids) {
-                            let refresh = async_cx
-                                .update_entity(&m_poll, |s, _| {
-                                    s.apply_main_task(MainTask::Hotkey(k))
-                                })
-                                .unwrap_or(UiRefresh::None);
+                            let refresh = async_cx.update_entity(&m_poll, |s, _| {
+                                s.apply_main_task(MainTask::Hotkey(k))
+                            });
                             dispatch_ui_refresh(
                                 refresh,
                                 &weak_root,
@@ -141,9 +146,8 @@ impl RootView {
                         }
                     }
                 }
-                let toast_dismissed = async_cx
-                    .update_entity(&m_poll, |s, _| s.tick_toast_auto_dismiss())
-                    .unwrap_or(false);
+                let toast_dismissed =
+                    async_cx.update_entity(&m_poll, |s, _| s.tick_toast_auto_dismiss());
                 if toast_dismissed {
                     dispatch_ui_refresh(
                         UiRefresh::Full,
@@ -193,6 +197,8 @@ impl RootView {
             layout_desktop_motion: 0.0,
             layout_desktop_target: 0.0,
             motion_bootstrapped: false,
+            script_dialog_open: false,
+            toast_shown: None,
         };
         this.sync_play_mode_hotkeys(PlayMode::Listen);
         this
@@ -347,7 +353,7 @@ impl Render for RootView {
         let prefetch_music_covers_on_scroll = cx.listener({
             let model = model.clone();
             let scroll_h = music_list_scroll_handle.clone();
-            move |_, _: &ScrollWheelEvent, window, cx| {
+            move |_, _: &ScrollEvent, window, cx| {
                 let is_desktop_w = window.bounds().size.width >= px(DESKTOP_MIN_WIDTH_PX);
                 let grid_w = (window.bounds().size.width
                     - px(480.0)
@@ -371,12 +377,14 @@ impl Render for RootView {
             }
         });
 
-        cx.read_entity(&self.model, move |s, _| {
+        // 颜色令牌需在借用 self 之前取好，闭包内才能 move 走 `cx`。
+        let colors = Palette::from(cx);
+        let want_script_dialog = cx.read_entity(&self.model, |s, _| s.modal_script);
+        let want_toast = cx.read_entity(&self.model, |s, _| s.toast.clone());
+
+        let root_el = cx.read_entity(&self.model, move |s, _| {
             let list = s.filtered_display.clone();
             let current_id = s.current.as_ref().map(|m| m.id);
-            let modal_script = s.modal_script;
-            let toast = s.toast.clone();
-            let cur = s.current.clone();
             let play_mode = s.play_mode;
             let launch_as_administrator = s.launch_as_administrator;
             let is_elevated = ClxState::is_elevated_now();
@@ -407,8 +415,8 @@ impl Render for RootView {
                                 .cursor_pointer()
                                 .text_xl()
                                 .child("☰")
-                                .text_color(rgb(TEXT_PRIMARY))
-                                .when(update_badge, |d| d.text_color(rgb(BADGE)))
+                                .text_color(colors.text_primary)
+                                .when(update_badge, |d| d.text_color(colors.badge))
                                 .id("settings-menu")
                                 .on_click(move |_, _, cx| {
                                     let _ = cx.update_entity(&m3, |st, c| {
@@ -428,13 +436,14 @@ impl Render for RootView {
                     .id("scroll-music-list")
                     .overflow_y_scroll()
                     .track_scroll(&music_list_scroll_handle)
-                    .on_scroll_wheel(prefetch_music_covers_on_scroll)
+                    .on_scroll(prefetch_music_covers_on_scroll)
                     .when(!is_desktop, |s| s.px(px(10.0)))
                     .child(
                         div()
                             .w_full()
                             .min_w(px(0.0))
                             .child(music_list_panel(
+                                &colors,
                                 list,
                                 current_id,
                                 m.clone(),
@@ -451,7 +460,7 @@ impl Render for RootView {
                     .min_h(px(0.0))
                     .min_w(px(0.0))
                     .w_full()
-                    .text_color(rgb(TEXT_PRIMARY))
+                    .text_color(colors.text_primary)
                     .when(is_desktop, |d| d.gap(px(8.0)).p(px(10.0)))
                     .when(!is_desktop, |d| d.h_full())
                     .child(list_header)
@@ -480,11 +489,11 @@ impl Render for RootView {
                     .when(is_desktop, |d| {
                         d.w(px(480.0))
                             .flex_shrink_0()
-                            .bg(rgb(BG_ELEVATED))
+                            .bg(colors.bg_elevated)
                             .border_l_1()
-                            .border_color(rgb(SEPARATOR))
+                            .border_color(colors.separator)
                     })
-                    .when(!is_desktop, |d| d.bg(rgb(BG_ELEVATED)))
+                    .when(!is_desktop, |d| d.bg(colors.bg_elevated))
                     .child(
                         div()
                             .flex_1()
@@ -548,18 +557,18 @@ impl Render for RootView {
                 .flex()
                 .flex_col()
                 .size_full()
-                .bg(rgb(BG_APP))
-                .text_color(rgb(TEXT_PRIMARY))
+                .bg(colors.bg_app)
+                .text_color(colors.text_primary)
                 .relative()
                 .child(main_body)
                 .when(!is_desktop && mobile_lyrics_motion < 0.5, |root| {
-                    root.child(mobile_lyrics_toggle_overlay(open_mobile_lyrics))
+                    root.child(mobile_lyrics_toggle_overlay(&colors, open_mobile_lyrics))
                 })
                 .when(!is_desktop && mobile_lyrics_motion >= 0.5, |root| {
-                    root.child(mobile_list_back_overlay(back_to_music_list))
+                    root.child(mobile_list_back_overlay(&colors, back_to_music_list))
                 })
                 .when(settings_motion > 0.001, |root| {
-                    root.child(settings_drawer(
+                    root.child(settings_drawer(&colors,
                         settings_motion,
                         model.clone(),
                         remote_ver,
@@ -573,21 +582,33 @@ impl Render for RootView {
                         weak_root_settings.clone(),
                     ))
                 })
-                .when(modal_script, |root| {
-                    let title = cur.as_ref().map(|c| c.name.clone()).unwrap_or_default();
-                    let author = cur.as_ref().map(|c| c.author.clone()).unwrap_or_default();
-                    root.child(script_modal(model.clone(), title, author))
-                })
-                .when(toast.is_some(), |root| {
-                    let msg = toast.clone().unwrap_or_default();
-                    let m = model.clone();
-                    root.child(toast_overlay(msg, move |_, _, cx| {
-                        let _ = cx.update_entity(&m, |st, c| {
-                            st.dismiss_toast();
-                            c.notify();
-                        });
-                    }))
-                })
-        })
+        });
+
+        // 脚本演奏提示框由窗口层绘制，这里只负责按状态开/关。
+        if want_script_dialog != self.script_dialog_open {
+            if want_script_dialog {
+                let (title, author) = cx.read_entity(&self.model, |s, _| {
+                    s.current
+                        .as_ref()
+                        .map(|c| (c.name.clone(), c.author.clone()))
+                        .unwrap_or_default()
+                });
+                open_script_dialog(window, cx, title, author);
+            } else {
+                close_script_dialog(window, cx);
+            }
+            self.script_dialog_open = want_script_dialog;
+        }
+
+        // toast 由组件库通知层展示；文案变化时替换，消失时清除。
+        if want_toast != self.toast_shown {
+            match want_toast.clone() {
+                Some(msg) => push_toast_notification(window, cx, msg),
+                None => clear_toast_notifications(window, cx),
+            }
+            self.toast_shown = want_toast;
+        }
+
+        root_el
     }
 }

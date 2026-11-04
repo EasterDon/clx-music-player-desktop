@@ -1,12 +1,13 @@
 use crate::ui::motion::MOBILE_PAGE_SLIDE_PX;
 use crate::ui::theme::*;
-use gpui::prelude::*;
-use gpui::*;
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 
 pub(crate) const MOBILE_FLOAT_BTN: f32 = 32.0;
 pub(crate) const MOBILE_LYRICS_TOGGLE_BOTTOM: f32 = 14.0;
 
 fn mobile_floating_icon_btn(
+    colors: &Palette,
     id: &'static str,
     icon: &'static str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -24,10 +25,10 @@ fn mobile_floating_icon_btn(
         .justify_center()
         .rounded_full()
         .border_1()
-        .border_color(rgb(SEPARATOR))
-        .bg(rgb(BG_ELEVATED))
+        .border_color(colors.separator)
+        .bg(colors.bg_elevated)
         .text_sm()
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(colors.text_secondary)
         .cursor_pointer()
         .occlude()
         .child(icon)
@@ -36,18 +37,20 @@ fn mobile_floating_icon_btn(
 }
 
 pub(crate) fn mobile_lyrics_toggle_overlay(
+    colors: &Palette,
     on_open_lyrics: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    mobile_floating_icon_btn("mobile-open-lyrics", "♬", on_open_lyrics)
+    mobile_floating_icon_btn(colors, "mobile-open-lyrics", "♬", on_open_lyrics)
         .absolute()
         .bottom(px(MOBILE_LYRICS_TOGGLE_BOTTOM))
         .right(px(10.0))
 }
 
 pub(crate) fn mobile_list_back_overlay(
+    colors: &Palette,
     on_back: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    mobile_floating_icon_btn("mobile-back-list", "‹", on_back)
+    mobile_floating_icon_btn(colors, "mobile-back-list", "‹", on_back)
         .absolute()
         .top(px(10.0))
         .left(px(10.0))

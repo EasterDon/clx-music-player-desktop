@@ -4,12 +4,13 @@ use super::covers::{
     GRID_CARD_COVER_SZ, GRID_CARD_FIX_H, GRID_CARD_FIX_W,
 };
 use crate::ui::theme::*;
-use gpui::prelude::*;
-use gpui::*;
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) fn music_list_panel(
+    colors: &Palette,
     items: Vec<MusicItem>,
     current_id: Option<i64>,
     model: Entity<ClxState>,
@@ -33,6 +34,7 @@ pub(crate) fn music_list_panel(
                 let loaded = covers_grid.get(&item.id).cloned();
                 let cover_failed = failed_grid.contains(&item.id);
                 music_list_item(
+                    colors,
                     item,
                     sel,
                     model.clone(),
@@ -55,6 +57,7 @@ pub(crate) fn music_list_panel(
                 let loaded = music_covers.get(&item.id).cloned();
                 let cover_failed = music_cover_failed.contains(&item.id);
                 music_list_item(
+                    colors,
                     item,
                     sel,
                     model.clone(),
@@ -67,6 +70,7 @@ pub(crate) fn music_list_panel(
 }
 
 fn music_item_cover_square_top(
+                colors: &Palette,
     loaded: Option<Arc<Image>>,
     cover_failed: bool,
     initial: SharedString,
@@ -94,11 +98,11 @@ fn music_item_cover_square_top(
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(BG_PLACEHOLDER))
+            .bg(colors.bg_placeholder)
             .text_sm()
-            .text_color(rgb(TEXT_SECONDARY))
+            .text_color(colors.text_secondary)
             .child(init.clone()),
-        None => div().w_full().h(h).bg(rgb(BG_PLACEHOLDER)),
+        None => div().w_full().h(h).bg(colors.bg_placeholder),
     };
     div()
         .w_full()
@@ -106,11 +110,12 @@ fn music_item_cover_square_top(
         .flex_shrink_0()
         .rounded(px(8.0))
         .overflow_hidden()
-        .bg(rgb(BG_PLACEHOLDER))
+        .bg(colors.bg_placeholder)
         .child(inner)
 }
 
 fn music_item_cover_row_circle(
+                colors: &Palette,
     loaded: Option<Arc<Image>>,
     cover_failed: bool,
     initial: SharedString,
@@ -135,11 +140,11 @@ fn music_item_cover_row_circle(
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(BG_PLACEHOLDER))
+            .bg(colors.bg_placeholder)
             .text_xs()
-            .text_color(rgb(TEXT_SECONDARY))
+            .text_color(colors.text_secondary)
             .child(init.clone()),
-        None => div().w(side).h(side).bg(rgb(BG_PLACEHOLDER)),
+        None => div().w(side).h(side).bg(colors.bg_placeholder),
     };
     div()
         .w(side)
@@ -147,11 +152,12 @@ fn music_item_cover_row_circle(
         .flex_shrink_0()
         .rounded_full()
         .overflow_hidden()
-        .bg(rgb(BG_PLACEHOLDER))
+        .bg(colors.bg_placeholder)
         .child(inner)
 }
 
 fn music_list_item(
+    colors: &Palette,
     item: MusicItem,
     selected: bool,
     model: Entity<ClxState>,
@@ -168,9 +174,10 @@ fn music_list_item(
             .unwrap_or_else(|| "♪".into()),
     );
 
-    if grid {
+    let element: AnyElement = if grid {
         let m = model.clone();
         let item_clone = item.clone();
+        // 网格卡片：尺寸固定，交由外层 flex_wrap 排版。
         div()
             .w(px(GRID_CARD_FIX_W))
             .h(px(GRID_CARD_FIX_H))
@@ -187,8 +194,8 @@ fn music_list_item(
             .rounded(px(10.0))
             .overflow_hidden()
             .cursor_pointer()
-            .when(selected, |d| d.bg(rgb(BG_SELECTED)))
-            .when(!selected, |d| d.bg(rgb(BG_ELEVATED)))
+            .when(selected, |d| d.bg(colors.bg_selected))
+            .when(!selected, |d| d.bg(colors.bg_elevated))
             .id(row_id)
             .on_click(move |_, _, cx| {
                 let _ = cx.update_entity(&m, |s, c| {
@@ -197,6 +204,7 @@ fn music_list_item(
                 });
             })
             .child(music_item_cover_square_top(
+                colors,
                 cover_loaded,
                 cover_failed,
                 initial.clone(),
@@ -209,9 +217,9 @@ fn music_list_item(
                     .text_xs()
                     .truncate()
                     .when(selected, |d| {
-                        d.font_weight(FontWeight(600.0)).text_color(rgb(ACCENT))
+                        d.font_weight(FontWeight(600.0)).text_color(colors.accent)
                     })
-                    .when(!selected, |d| d.text_color(rgb(TEXT_PRIMARY)))
+                    .when(!selected, |d| d.text_color(colors.text_primary))
                     .child(item.name.clone()),
             )
             .child(
@@ -220,14 +228,18 @@ fn music_list_item(
                     .min_w(px(0.0))
                     .text_center()
                     .text_xs()
-                    .text_color(rgb(TEXT_SECONDARY))
+                    .text_color(colors.text_secondary)
                     .truncate()
                     .child(item.author.clone()),
             )
+            .into_any_element()
     } else {
         let m = model;
         let item_clone = item.clone();
+        // 列表行：ListItem 内部用 h_flex() 并叠加自己的 padding/gap 默认样式，
+        // 与这里需要的行布局冲突（实测会变成竖向堆叠），因此保持自绘容器。
         div()
+            .id(row_id)
             .w_full()
             .min_w(px(0.0))
             .flex()
@@ -238,9 +250,8 @@ fn music_list_item(
             .py(px(6.0))
             .rounded(px(8.0))
             .cursor_pointer()
-            .when(selected, |d| d.bg(rgb(BG_SELECTED)))
-            .when(!selected, |d| d.bg(rgb(BG_ELEVATED)))
-            .id(row_id)
+            .when(selected, |d| d.bg(colors.bg_selected))
+            .when(!selected, |d| d.bg(colors.bg_elevated))
             .on_click(move |_, _, cx| {
                 let _ = cx.update_entity(&m, |s, c| {
                     s.select_music(item_clone.clone());
@@ -248,6 +259,7 @@ fn music_list_item(
                 });
             })
             .child(music_item_cover_row_circle(
+                colors,
                 cover_loaded,
                 cover_failed,
                 initial,
@@ -262,17 +274,20 @@ fn music_list_item(
                         div()
                             .text_sm()
                             .when(selected, |d| {
-                                d.font_weight(FontWeight(600.0)).text_color(rgb(ACCENT))
+                                d.font_weight(FontWeight(600.0)).text_color(colors.accent)
                             })
-                            .when(!selected, |d| d.text_color(rgb(TEXT_PRIMARY)))
+                            .when(!selected, |d| d.text_color(colors.text_primary))
                             .child(item.name.clone()),
                     )
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(TEXT_SECONDARY))
+                            .text_color(colors.text_secondary)
                             .child(item.author.clone()),
                     ),
             )
-    }
+            .into_any_element()
+    };
+
+    element
 }

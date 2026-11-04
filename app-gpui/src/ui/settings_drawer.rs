@@ -2,13 +2,16 @@ use crate::model::{ClxState, PlayMode, APP_VERSION};
 use crate::ui::motion::SETTINGS_DRAWER_W_PX;
 use crate::ui::theme::*;
 use crate::util::open_url_in_browser;
-use gpui::prelude::*;
-use gpui::*;
+use gpui_kit::component::group_box::{GroupBox, GroupBoxVariants};
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 
 const DRAWER_PAD: f32 = 20.0;
 const SECTION_GAP: f32 = 20.0;
 
 pub fn settings_drawer(
+    colors: &Palette,
     progress: f32,
     model: Entity<ClxState>,
     remote_ver: String,
@@ -24,7 +27,8 @@ pub fn settings_drawer(
     let m_close = model.clone();
     let m_modes = model.clone();
     let link = download_link.clone();
-    let scrim_a = OVERLAY_SCRIM_A * progress;
+    let scrim = colors.overlay_scrim;
+    let scrim = scrim.opacity(scrim.a * progress);
     let announcement = if announcement.trim().is_empty() {
         "暂无公告".to_string()
     } else {
@@ -41,30 +45,31 @@ pub fn settings_drawer(
                 .flex()
                 .flex_col()
                 .gap(px(8.0))
-                .child(settings_section_title("公告"))
-                .child(settings_card().child(
+                .child(settings_section_title(colors, "公告"))
+                .child(settings_card(colors).child(
                     div()
                         .text_sm()
-                        .text_color(rgb(TEXT_PRIMARY))
+                        .text_color(colors.text_primary)
                         .child(announcement),
                 )),
         )
-        .child(settings_divider())
+        .child(settings_divider(colors))
         .child(
             div()
                 .flex()
                 .flex_col()
                 .gap(px(8.0))
-                .child(settings_section_title("演奏模式"))
+                .child(settings_section_title(colors, "演奏模式"))
                 .child(
-                    settings_card()
+                    settings_card(colors)
                         .child(
                             div()
                                 .text_xs()
-                                .text_color(rgb(TEXT_TERTIARY))
-                                .child("聆听模式仅播放音乐；演奏模式可使用 F1 / F2 快捷键自动演奏。"),
+                                .text_color(colors.text_tertiary)
+                                .child("聆听模式仅播放音乐"),
                         )
                         .child(settings_mode_segment(
+                            colors,
                             play_mode,
                             m_modes.clone(),
                             PlayMode::Listen,
@@ -73,18 +78,20 @@ pub fn settings_drawer(
                         )),
                 ),
         )
-        .child(settings_divider())
+        .child(settings_divider(colors))
         .child(settings_admin_section(
+            colors,
             is_elevated,
             launch_as_administrator,
             model.clone(),
         ))
-        .child(settings_divider())
+        .child(settings_divider(colors))
         .child({
-            let mut version_card = settings_card();
+            let mut version_card = settings_card(colors);
             version_card =
-                version_card.child(settings_kv_row("本地版本", APP_VERSION.to_string(), false));
+                version_card.child(settings_kv_row(colors, "本地版本", APP_VERSION.to_string(), false));
             version_card = version_card.child(settings_kv_row(
+                colors,
                 "服务端版本",
                 remote_ver,
                 has_update,
@@ -101,7 +108,7 @@ pub fn settings_drawer(
                                 .px(px(8.0))
                                 .py(px(3.0))
                                 .rounded(px(6.0))
-                                .bg(rgb(ACCENT))
+                                .bg(colors.accent)
                                 .text_xs()
                                 .text_color(rgb(0xffffff))
                                 .child("有新版本"),
@@ -110,7 +117,7 @@ pub fn settings_drawer(
             }
             if !version_desc.is_empty() {
                 version_card =
-                    version_card.child(settings_multiline_field("更新说明", &version_desc));
+                    version_card.child(settings_multiline_field(colors, "更新说明", &version_desc));
             }
             if has_update && !download_link.is_empty() {
                 let link_dl = link.clone();
@@ -120,7 +127,7 @@ pub fn settings_drawer(
                         .mt(px(4.0))
                         .py(px(10.0))
                         .rounded(px(10.0))
-                        .bg(rgb(ACCENT))
+                        .bg(colors.accent)
                         .flex()
                         .items_center()
                         .justify_center()
@@ -139,7 +146,7 @@ pub fn settings_drawer(
                 .flex()
                 .flex_col()
                 .gap(px(8.0))
-                .child(settings_section_title("版本信息"))
+                .child(settings_section_title(colors, "版本信息"))
                 .child(version_card)
         });
 
@@ -157,7 +164,7 @@ pub fn settings_drawer(
                 .left_0()
                 .right_0()
                 .bottom_0()
-                .bg(hsla(0., 0., 0., scrim_a))
+                .bg(scrim)
                 .cursor_pointer()
                 .id("settings-backdrop")
                 .on_click(move |_, _, cx| {
@@ -176,11 +183,11 @@ pub fn settings_drawer(
                 .w(px(SETTINGS_DRAWER_W_PX))
                 .flex()
                 .flex_col()
-                .bg(rgb(BG_ELEVATED))
+                .bg(colors.bg_elevated)
                 .border_r_1()
-                .border_color(rgb(SEPARATOR))
+                .border_color(colors.separator)
                 .shadow_lg()
-                .text_color(rgb(TEXT_PRIMARY))
+                .text_color(colors.text_primary)
                 .occlude()
                 .child(
                     div()
@@ -193,14 +200,14 @@ pub fn settings_drawer(
                         .pt(px(DRAWER_PAD))
                         .pb(px(12.0))
                         .border_b_1()
-                        .border_color(rgb(SEPARATOR))
+                        .border_color(colors.separator)
                         .child(
                             div()
                                 .text_xl()
                                 .font_weight(FontWeight(700.0))
                                 .child("设置"),
                         )
-                        .child(settings_close_button(model)),
+                        .child(settings_close_button(colors, model)),
                 )
                 .child(
                     div()
@@ -215,20 +222,18 @@ pub fn settings_drawer(
         )
 }
 
-fn settings_close_button(model: Entity<ClxState>) -> impl IntoElement {
-    div()
+fn settings_close_button(colors: &Palette, model: Entity<ClxState>) -> impl IntoElement {
+    Button::new("settings-close")
+        .ghost()
+        .rounded_full()
         .w(px(32.0))
         .h(px(32.0))
         .flex()
         .items_center()
         .justify_center()
-        .rounded_full()
-        .bg(rgb(BG_SURFACE))
-        .text_sm()
-        .text_color(rgb(TEXT_SECONDARY))
-        .cursor_pointer()
+        .bg(colors.bg_surface)
+        .text_color(colors.text_secondary)
         .child("✕")
-        .id("settings-close")
         .on_click(move |_, _, cx| {
             let _ = cx.update_entity(&model, |st, c| {
                 st.show_settings = false;
@@ -237,31 +242,24 @@ fn settings_close_button(model: Entity<ClxState>) -> impl IntoElement {
         })
 }
 
-fn settings_section_title(title: &'static str) -> impl IntoElement {
+fn settings_section_title(colors: &Palette, title: &'static str) -> impl IntoElement {
     div()
         .text_xs()
         .font_weight(FontWeight(600.0))
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(colors.text_secondary)
         .child(title)
 }
 
-fn settings_card() -> Stateful<Div> {
-    div()
-        .id("settings-card")
-        .w_full()
-        .flex()
-        .flex_col()
-        .gap(px(12.0))
-        .p(px(14.0))
-        .rounded(px(12.0))
-        .bg(rgb(BG_SURFACE))
+fn settings_card(_colors: &Palette) -> GroupBox {
+    // 卡片统一改用组件库的 GroupBox（填充样式），配色随主题。
+    GroupBox::new().fill()
 }
 
-fn settings_divider() -> impl IntoElement {
-    div().h(px(1.0)).w_full().bg(rgb(SEPARATOR))
+fn settings_divider(colors: &Palette) -> impl IntoElement {
+    div().h(px(1.0)).w_full().bg(colors.separator)
 }
 
-fn settings_kv_row(label: &'static str, value: String, highlight: bool) -> impl IntoElement {
+fn settings_kv_row(colors: &Palette, label: &'static str, value: String, highlight: bool) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
@@ -272,7 +270,7 @@ fn settings_kv_row(label: &'static str, value: String, highlight: bool) -> impl 
             div()
                 .flex_shrink_0()
                 .text_sm()
-                .text_color(rgb(TEXT_SECONDARY))
+                .text_color(colors.text_secondary)
                 .child(label),
         )
         .child(
@@ -281,13 +279,13 @@ fn settings_kv_row(label: &'static str, value: String, highlight: bool) -> impl 
                 .min_w(px(0.0))
                 .text_sm()
                 .text_align(TextAlign::Right)
-                .when(highlight, |d| d.text_color(rgb(BADGE)).font_weight(FontWeight(600.0)))
-                .when(!highlight, |d| d.text_color(rgb(TEXT_PRIMARY)))
+                .when(highlight, |d| d.text_color(colors.badge).font_weight(FontWeight(600.0)))
+                .when(!highlight, |d| d.text_color(colors.text_primary))
                 .child(value),
         )
 }
 
-fn settings_multiline_field(label: &'static str, body: &str) -> impl IntoElement {
+fn settings_multiline_field(colors: &Palette, label: &'static str, body: &str) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -295,18 +293,19 @@ fn settings_multiline_field(label: &'static str, body: &str) -> impl IntoElement
         .child(
             div()
                 .text_xs()
-                .text_color(rgb(TEXT_SECONDARY))
+                .text_color(colors.text_secondary)
                 .child(label),
         )
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(TEXT_PRIMARY))
+                .text_color(colors.text_primary)
                 .child(body.to_string()),
         )
 }
 
 fn settings_mode_segment(
+    colors: &Palette,
     active: PlayMode,
     model: Entity<ClxState>,
     listen: PlayMode,
@@ -319,10 +318,11 @@ fn settings_mode_segment(
         .p(px(3.0))
         .gap(px(4.0))
         .rounded(px(10.0))
-        .bg(rgb(BG_ELEVATED))
+        .bg(colors.bg_elevated)
         .border_1()
-        .border_color(rgb(SEPARATOR))
+        .border_color(colors.separator)
         .child(settings_mode_button(
+            colors,
             "mode-listen",
             "聆听",
             active == listen,
@@ -331,6 +331,7 @@ fn settings_mode_segment(
             weak_root.clone(),
         ))
         .child(settings_mode_button(
+            colors,
             "mode-script",
             "演奏",
             active == script,
@@ -341,6 +342,7 @@ fn settings_mode_segment(
 }
 
 fn settings_admin_section(
+    colors: &Palette,
     is_elevated: bool,
     launch_as_administrator: bool,
     model: Entity<ClxState>,
@@ -353,16 +355,17 @@ fn settings_admin_section(
     let elevated_highlight = is_elevated;
     let need_restart = launch_as_administrator && !is_elevated;
 
-    let mut card = settings_card();
+    let mut card = settings_card(colors);
     card = card
         .child(
             div()
                 .text_xs()
-                .text_color(rgb(TEXT_TERTIARY))
+                .text_color(colors.text_tertiary)
                 .child("如自动演奏未生效，可尝试使用管理员权限运行本软件。开启后，若当前不是管理员，下次启动会弹出 UAC；若已是管理员则不会重复提示。也可点击下方按钮立即重启。"),
         )
-        .child(settings_kv_row("当前权限", elevated_label.to_string(), elevated_highlight))
+        .child(settings_kv_row(colors, "当前权限", elevated_label.to_string(), elevated_highlight))
         .child(settings_kv_row(
+            colors,
             "下次启动",
             if launch_as_administrator {
                 "以管理员身份"
@@ -373,6 +376,7 @@ fn settings_admin_section(
             launch_as_administrator,
         ))
         .child(settings_admin_toggle(
+            colors,
             launch_as_administrator,
             model.clone(),
         ));
@@ -381,7 +385,7 @@ fn settings_admin_section(
         .flex()
         .flex_col()
         .gap(px(8.0))
-        .child(settings_section_title("权限与启动"))
+        .child(settings_section_title(colors, "权限与启动"))
         .child(card);
 
     if need_restart {
@@ -391,7 +395,7 @@ fn settings_admin_section(
                 .w_full()
                 .py(px(10.0))
                 .rounded(px(10.0))
-                .bg(rgb(ACCENT))
+                .bg(colors.accent)
                 .flex()
                 .items_center()
                 .justify_center()
@@ -425,6 +429,7 @@ fn settings_admin_section(
 }
 
 fn settings_admin_toggle(
+    colors: &Palette,
     launch_as_administrator: bool,
     model: Entity<ClxState>,
 ) -> impl IntoElement {
@@ -435,7 +440,7 @@ fn settings_admin_toggle(
         .child(
             div()
                 .text_xs()
-                .text_color(rgb(TEXT_SECONDARY))
+                .text_color(colors.text_secondary)
                 .child("以管理员身份启动"),
         )
         .child(
@@ -445,10 +450,11 @@ fn settings_admin_toggle(
                 .p(px(3.0))
                 .gap(px(4.0))
                 .rounded(px(10.0))
-                .bg(rgb(BG_ELEVATED))
+                .bg(colors.bg_elevated)
                 .border_1()
-                .border_color(rgb(SEPARATOR))
+                .border_color(colors.separator)
                 .child(settings_admin_option(
+                    colors,
                     "admin-launch-off",
                     "关闭",
                     !launch_as_administrator,
@@ -456,6 +462,7 @@ fn settings_admin_toggle(
                     false,
                 ))
                 .child(settings_admin_option(
+                    colors,
                     "admin-launch-on",
                     "开启",
                     launch_as_administrator,
@@ -466,29 +473,28 @@ fn settings_admin_toggle(
 }
 
 fn settings_admin_option(
+    colors: &Palette,
     id: &'static str,
     label: &'static str,
     active: bool,
     model: Entity<ClxState>,
     enabled: bool,
 ) -> impl IntoElement {
-    div()
+    Button::new(id)
         .flex_1()
         .py(px(8.0))
         .rounded(px(8.0))
         .flex()
         .items_center()
         .justify_center()
-        .cursor_pointer()
         .text_sm()
-        .when(active, |d| {
-            d.bg(rgb(ACCENT))
-                .text_color(rgb(0xffffff))
+        .when(active, |b| {
+            b.bg(colors.accent)
+                .text_color(colors.accent_fg)
                 .font_weight(FontWeight(600.0))
         })
-        .when(!active, |d| d.text_color(rgb(TEXT_SECONDARY)))
+        .when(!active, |b| b.ghost().text_color(colors.text_secondary))
         .child(label)
-        .id(id)
         .on_click(move |_, _, cx| {
             if active {
                 return;
@@ -515,6 +521,7 @@ fn settings_admin_option(
 }
 
 fn settings_mode_button(
+    colors: &Palette,
     id: &'static str,
     label: &'static str,
     active: bool,
@@ -522,23 +529,21 @@ fn settings_mode_button(
     mode: PlayMode,
     weak_root: WeakEntity<crate::ui::root::RootView>,
 ) -> impl IntoElement {
-    div()
+    Button::new(id)
         .flex_1()
         .py(px(8.0))
         .rounded(px(8.0))
         .flex()
         .items_center()
         .justify_center()
-        .cursor_pointer()
         .text_sm()
-        .when(active, |d| {
-            d.bg(rgb(ACCENT))
-                .text_color(rgb(0xffffff))
+        .when(active, |b| {
+            b.bg(colors.accent)
+                .text_color(colors.accent_fg)
                 .font_weight(FontWeight(600.0))
         })
-        .when(!active, |d| d.text_color(rgb(TEXT_SECONDARY)))
+        .when(!active, |b| b.ghost().text_color(colors.text_secondary))
         .child(label)
-        .id(id)
         .on_click(move |_, _, cx| {
             let _ = cx.update_entity(&model, |s, c| {
                 s.play_mode = mode;

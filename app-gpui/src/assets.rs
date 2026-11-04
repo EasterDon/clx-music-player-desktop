@@ -1,4 +1,4 @@
-use gpui::{AssetSource, Result, SharedString};
+use gpui_kit::{AssetSource, Result, SharedString};
 use std::borrow::Cow;
 
 pub struct Assets;

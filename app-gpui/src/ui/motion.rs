@@ -1,6 +1,6 @@
 //! UI 过渡动画（对齐 `app-tauri` 中 cubic-bezier(0.22, 1, 0.36, 1) 的时长与手感）。
 
-use gpui::ease_out_quint;
+use gpui_kit::ease_out_quint;
 
 /// 设置抽屉开关（约 0.32s，贴近 Ant Design Drawer）。
 pub const DURATION_DRAWER_SECS: f32 = 0.32;

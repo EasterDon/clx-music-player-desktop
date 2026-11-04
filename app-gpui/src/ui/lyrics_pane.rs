@@ -2,8 +2,8 @@ use crate::lyrics::LyricLine;
 use crate::model::ClxState;
 use crate::ui::motion::{step_toward, DURATION_LYRICS_SCROLL_SECS};
 use crate::ui::theme::*;
-use gpui::prelude::*;
-use gpui::*;
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +13,6 @@ const LYRIC_FONT_CURRENT: f32 = 19.2;
 /// 在 `LYRIC_LINE_MIN_H` 内允许的最大行数（超出则省略号）。
 const LYRIC_LINE_CLAMP_NORMAL: usize = 3;
 const LYRIC_LINE_CLAMP_CURRENT: usize = 2;
-const LYRIC_PLACEHOLDER: u32 = 0x7a7a7a;
 const LYRIC_MUTED: u32 = 0x808080;
 
 pub struct LyricsPaneView {
@@ -136,7 +135,7 @@ impl LyricsPaneView {
     }
 }
 
-fn lyric_line_row(line: &LyricLine, is_current: bool) -> impl IntoElement {
+fn lyric_line_row(colors: &Palette, line: &LyricLine, is_current: bool) -> impl IntoElement {
     let font_size = if is_current {
         LYRIC_FONT_CURRENT
     } else {
@@ -148,9 +147,10 @@ fn lyric_line_row(line: &LyricLine, is_current: bool) -> impl IntoElement {
         LYRIC_LINE_CLAMP_NORMAL
     };
     let color = if is_current {
-        TEXT_PRIMARY
+        colors.text_primary
     } else {
-        LYRIC_MUTED
+        let c: Hsla = rgb(LYRIC_MUTED).into();
+        c
     };
 
     div()
@@ -168,7 +168,7 @@ fn lyric_line_row(line: &LyricLine, is_current: bool) -> impl IntoElement {
                 .min_w(px(0.0))
                 .text_center()
                 .text_size(px(font_size))
-                .text_color(rgb(color))
+                .text_color(color)
                 .whitespace_normal()
                 .line_clamp(max_lines)
                 .child(line.content.clone()),
@@ -177,6 +177,7 @@ fn lyric_line_row(line: &LyricLine, is_current: bool) -> impl IntoElement {
 
 impl Render for LyricsPaneView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let colors = Palette::from(cx);
         let viewport = self.viewport.clone();
         let mut has_track = false;
         let mut lines = Arc::new(Vec::new());
@@ -211,7 +212,7 @@ impl Render for LyricsPaneView {
                 shell.flex().items_center().justify_center().child(
                     div()
                         .text_size(px(LYRIC_FONT_NORMAL))
-                        .text_color(rgb(LYRIC_PLACEHOLDER))
+                        .text_color(colors.text_tertiary)
                         .child("暂未选择歌曲"),
                 )
             })
@@ -219,7 +220,7 @@ impl Render for LyricsPaneView {
                 shell.flex().items_center().justify_center().child(
                     div()
                         .text_size(px(LYRIC_FONT_NORMAL))
-                        .text_color(rgb(LYRIC_PLACEHOLDER))
+                        .text_color(colors.text_tertiary)
                         .child("加载歌词中…"),
                 )
             })
@@ -234,7 +235,7 @@ impl Render for LyricsPaneView {
                         .w_full()
                         .text_center()
                         .children(lines.iter().enumerate().map(|(i, line)| {
-                            lyric_line_row(line, Some(i) == idx)
+                            lyric_line_row(&colors, line, Some(i) == idx)
                         })),
                 )
             })

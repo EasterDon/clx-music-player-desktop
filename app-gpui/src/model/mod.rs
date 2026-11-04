@@ -6,7 +6,7 @@ use crate::services::cover_queue::CoverQueue;
 use clx_core::elevation;
 use crate::services::hotkey::HotkeyKind;
 use crate::services::music_cache;
-use gpui::{Image, ImageFormat};
+use gpui_kit::{Image, ImageFormat};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
