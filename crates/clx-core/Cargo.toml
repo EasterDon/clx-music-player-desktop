@@ -10,3 +10,7 @@ enigo = "^0.6.1"
 
 [target.'cfg(windows)'.dependencies]
 is_elevated = "0.1"
+
+# 仅在 macOS 需要：把按键模拟派发到主队列，规避 TIS/TSM 的线程断言崩溃。
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch2 = "0.3"

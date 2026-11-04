@@ -28,7 +28,9 @@ version = "0.5"
 
 [dependencies]
 clx-core = { path = "../crates/clx-core" }
-gpui = "^0.2.2"
+# gpui-kit 是 GPUI 的门面 crate：`gpui_kit::*` 即 gpui，另有 base / component / assets 分层。
+# 应用不再直接依赖 gpui，引擎版本由 gpui-kit 统一决定。
+gpui-kit = "0.9.0"
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
 ureq = { version = "^3.3.0", features = ["json"] }
