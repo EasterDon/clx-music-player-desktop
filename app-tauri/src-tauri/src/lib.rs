@@ -21,9 +21,31 @@ fn get_elevation_state() -> ElevationState {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FkeyHint {
+    /// 是否需要配合 `fn`（macOS 未启用「标准功能键」时为 true）。
+    needs_fn: bool,
+    f1_label: String,
+    f2_label: String,
+    start_hint: String,
+    stop_hint: String,
+}
+
+/// 供前端渲染 F1/F2 提示文案；平台判断与 GPUI 端共用 `clx_core::fkey_hint`。
 #[tauri::command]
-fn set_launch_as_administrator(enabled: bool) -> Result<(), String> {
-    app_config::save(&app_config::AppConfig {
+fn get_fkey_hint() -> FkeyHint {
+    FkeyHint {
+        needs_fn: clx_core::fkey_hint::needs_fn_modifier(),
+        f1_label: clx_core::fkey_hint::fkey_label("F1"),
+        f2_label: clx_core::fkey_hint::fkey_label("F2"),
+        start_hint: clx_core::fkey_hint::start_script_hint(),
+        stop_hint: clx_core::fkey_hint::stop_script_hint(),
+    }
+}
+
+#[tauri::command]
+fn set_launch_as_administrator(enabled: bool) -> Result<(), String> {    app_config::save(&app_config::AppConfig {
         launch_as_administrator: enabled,
     })
 }
@@ -80,6 +102,7 @@ pub fn run() {
             set_launch_as_administrator,
             restart_as_admin,
             take_startup_elevation_toast,
+            get_fkey_hint,
         ])
         .run(tauri::generate_context!())
         .expect("运行应用失败");

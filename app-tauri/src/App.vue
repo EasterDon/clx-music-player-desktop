@@ -20,6 +20,7 @@ import { desktop_breakpoint, music_resource_url } from '@/config';
 import { use_music_store } from '@/store/player';
 import { get_app_info, get_music_lyrics, get_music_list } from '@/api';
 import { use_config_store, is_script_play_mode } from '@/store/config';
+import { get_fkey_hint, type FkeyHint } from '@/util/fkey_hint';
 import { app_version } from '@/config';
 import {
   use_filtered_music_list,
@@ -65,9 +66,15 @@ use_selection_spin(spinning);
 
 const { sync_shortcuts_with_play_mode } = use_global_shortcuts();
 
+/** F1/F2 提示文案，由 Rust 端按系统环境给出（macOS 未开标准功能键时带 fn）。 */
+const fkey_hint = ref<FkeyHint | null>(null);
+void get_fkey_hint().then((hint) => {
+  fkey_hint.value = hint;
+});
+
 const music_filter_placeholder = computed(() =>
   is_script_play_mode(config_store.play_mode)
-    ? 'F1开始自动演奏，F2停止演奏'
+    ? `${fkey_hint.value?.f1Label ?? 'F1'}开始自动演奏，${fkey_hint.value?.f2Label ?? 'F2'}停止演奏`
     : '聆听模式仅可播放；可在设置中切换为「演奏」',
 );
 
