@@ -34,7 +34,7 @@ function Find-WixBin {
 function Ensure-Wix {
     $bin = Find-WixBin
     if ($bin) {
-        $env:WIX = $bin
+        $env:WIX_PATH = $bin
         $env:PATH = "$bin;$env:PATH"
         return
     }
@@ -63,7 +63,7 @@ function Ensure-Wix {
     if (-not $bin) {
         throw "WiX 已安装但未在 PATH 中找到 candle.exe。请重新打开终端，或将 WiX 的 bin 目录加入 PATH。"
     }
-    $env:WIX = $bin
+    $env:WIX_PATH = $bin
     $env:PATH = "$bin;$env:PATH"
     Write-Host "WiX 已就绪: $bin" -ForegroundColor Green
 }

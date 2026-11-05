@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/clx-core", "app-tauri/src-tauri", "app-gpui"]
 
 [workspace.package]
-version = "1.0.3"
+version = "1.0.4"
 authors = ["EasterDon"]
 license = "AGPL-3.0-only"
 
