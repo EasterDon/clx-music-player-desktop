@@ -81,15 +81,23 @@ if (-not (Get-Command "cargo-wix" -ErrorAction SilentlyContinue)) {
 
 Push-Location $Root
 try {
+    # 简体中文界面：需同时指定 culture 与 wxl 本地化文件，
+    # 否则安装向导会按 en-US 回退，中文文案因代码页不符而乱码。
+    $LocaleWxl = Join-Path $Root "app-gpui\wix\locales\zh-CN.wxl"
+    if (-not (Test-Path $LocaleWxl)) {
+        throw "未找到本地化文件：$LocaleWxl"
+    }
+    $LocaleArgs = @("-c", "zh-CN", "-l", $LocaleWxl)
+
     if ($Debug) {
         Write-Host "构建 Debug 并生成 MSI …"
-        cargo wix -p clx-gpui -d --dbg-build --nocapture
+        cargo wix -p clx-gpui @LocaleArgs -d --dbg-build --nocapture
     } else {
         if (-not (Get-Command "fxc.exe" -ErrorAction SilentlyContinue)) {
             Write-Host "提示：未找到 fxc.exe，Release 可能失败。可加 -Debug，或安装 Windows SDK。" -ForegroundColor Yellow
         }
         Write-Host "构建 Release 并生成 MSI …"
-        cargo wix -p clx-gpui --nocapture
+        cargo wix -p clx-gpui @LocaleArgs --nocapture
     }
 
     $msiDir = Join-Path $Root "target\wix"

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="zh-CN" Codepage="936" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="WixUIBack">&amp;上一步</String>
+  <String Id="WixUINext">下一步(&amp;N)</String>
+  <String Id="WixUICancel">取消</String>
+  <String Id="WixUIFinish">完成</String>
+  <String Id="WixUIBrowse">浏览(&amp;B)...</String>
+  <String Id="WixUIChange">更改(&amp;C)...</String>
+  <String Id="WixUIInstall">&amp;安装</String>
+  <String Id="WixUIRemove">&amp;卸载</String>
+  <String Id="WixUIRepair">&amp;修复</String>
+  <String Id="WixUIOK">确定</String>
+
+  <String Id="WelcomeDlgTitle">欢迎使用 [ProductName] 安装向导</String>
+  <String Id="WelcomeDlgDescription">安装向导将引导你完成 [ProductName] 的安装。建议在继续之前关闭其它应用程序。</String>
+  <String Id="LicenseAgreementDlgTitle">许可协议</String>
+  <String Id="LicenseAgreementDlgDescription">请仔细阅读以下许可协议。</String>
+  <String Id="InstallDirDlgTitle">选择安装位置</String>
+  <String Id="InstallDirDlgDescription">选择 [ProductName] 的安装文件夹。</String>
+  <String Id="VerifyReadyDlgInstallTitle">准备安装 [ProductName]</String>
+  <String Id="VerifyReadyDlgInstallDescription">点击「安装」开始安装 [ProductName]；如需修改设置，请点击「上一步」。</String>
+  <String Id="ProgressDlgTitleInstalling">正在安装 [ProductName]</String>
+  <String Id="ProgressDlgStatusLabel">正在安装 [ProductName]，请稍候…</String>
+  <String Id="ExitDialogTitle">完成 [ProductName] 安装向导</String>
+  <String Id="ExitDialogDescription">已成功安装 [ProductName]。</String>
+</WixLocalization>

@@ -1,73 +1,33 @@
-<?xml version='1.0' encoding='windows-1252'?>
+<?xml version='1.0' encoding='utf-8'?>
 <!--
-  Copyright (C) 2017 Christopher R. Field.
-
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-
-  http://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
+  GPUI 版 MSI 模板（与 `cargo wix -p clx-gpui` 配合）。
+  - UpgradeCode 写死，发版后勿改，以保证覆盖升级。
+  - MajorUpgrade：同 UpgradeCode 的新版 MSI 会卸载旧版后再安装。
+  - 语言使用简体中文（2052 / Codepage 936），需配合 `locales/zh-CN.wxl`。
 -->
-
-<!--
-  The "cargo wix" subcommand provides a variety of predefined variables available
-  for customization of this template. The values for each variable are set at
-  installer creation time. The following variables are available:
-
-  TargetTriple      = The rustc target triple name.
-  TargetEnv         = The rustc target environment. This is typically either
-                      "msvc" or "gnu" depending on the toolchain downloaded and
-                      installed.
-  TargetVendor      = The rustc target vendor. This is typically "pc", but Rust
-                      does support other vendors, like "uwp".
-  CargoTargetBinDir = The complete path to the directory containing the
-                      binaries (exes) to include. The default would be
-                      "target\release\". If an explicit rustc target triple is
-                      used, i.e. cross-compiling, then the default path would
-                      be "target\<CARGO_TARGET>\<CARGO_PROFILE>",
-                      where "<CARGO_TARGET>" is replaced with the "CargoTarget"
-                      variable value and "<CARGO_PROFILE>" is replaced with the
-                      value from the "CargoProfile" variable. This can also
-                      be overridden manually with the "target-bin-dir" flag.
-  CargoTargetDir    = The path to the directory for the build artifacts, i.e.
-                      "target".
-  CargoProfile      = The cargo profile used to build the binaries
-                      (usually "debug" or "release").
-  Version           = The version for the installer. The default is the
-                      "Major.Minor.Fix" semantic versioning number of the Rust
-                      package.
--->
-
-<!--
-  Please do not remove these pre-processor If-Else blocks. These are used with
-  the `cargo wix` subcommand to automatically determine the installation
-  destination for 32-bit versus 64-bit installers. Removal of these lines will
-  cause installation errors.
--->
-<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
-    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
-<?else ?>
+<?if $(sys.BUILDARCH)="x86"?>
     <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
-<?endif ?>
+<?else?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?endif?>
 
+<!-- 安装目录使用纯英文，避免中文路径编码问题 -->
 <?define AppRootFolderName = "clx-music-player" ?>
 <?define EditionFolderName = "gpui" ?>
 
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
 
+    <!--
+      注意：Language 使用 2052（简体中文）而非 1033。
+      使用 1033 却显示中文文案时，MSI 会按 1252 代码页解码，导致安装界面乱码。
+    -->
     <Product
         Id='*'
         Name='一梦音乐播放器'
         UpgradeCode='1EBD4593-F79B-469B-8BE9-790937530E4D'
         Manufacturer='EasterDon'
-        Language='1033'
-        Codepage='1252'
+        Language='2052'
+        Codepage='936'
         Version='$(var.Version)'>
 
         <Package Id='*'
@@ -75,166 +35,233 @@
             Description='一梦音乐播放器'
             Manufacturer='EasterDon'
             InstallerVersion='450'
-            Languages='1033'
+            Languages='2052'
             Compressed='yes'
             InstallScope='perMachine'
-            SummaryCodepage='1252'
+            SummaryCodepage='936'
             />
 
         <MajorUpgrade
             Schedule='afterInstallInitialize'
-            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+            DowngradeErrorMessage='已安装更新版本的 [ProductName]，安装程序将退出。'/>
+
+        <!--
+          升级时沿用上次的安装目录：安装时把 INSTALLDIR 写入注册表，下次安装读取回来。
+          GPUI 版此前未发布过，只有当前键名一种来源，无需多来源合并。
+          读写均用 HKCU：AppSearch 阶段 HKMU 依赖的 ALLUSERS 可能尚未确定，故避用之。
+        -->
+        <Property Id='PREV_INSTALL_DIR'>
+            <RegistrySearch Id='PrevInstallDir'
+                            Root='HKCU'
+                            Key='Software\EasterDon\clx-music-player-gpui'
+                            Name='InstallDir'
+                            Type='raw'/>
+        </Property>
+
+        <CustomAction Id='RestorePrevInstallDir'
+                      Property='INSTALLDIR'
+                      Value='[PREV_INSTALL_DIR]'
+                      Execute='immediate'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
         <Property Id='DiskPrompt' Value='一梦音乐播放器 安装'/>
 
+        <!--
+          INSTALLDIR：安装目录，用户在「选择安装位置」页可改，
+          默认 %ProgramFiles%\clx-music-player\gpui。
+          若用户选择了盘符根目录（如 D:\）或其它目录，安装时会自动规范化为
+          <盘>:\clx-music-player\gpui，避免文件散落到盘根。
+          规范化逻辑见下方 CalculateInstallDir 自定义操作。
+        -->
         <Directory Id='TARGETDIR' Name='SourceDir'>
+            <!-- 桌面快捷方式 -->
+            <Directory Id='DesktopFolder' Name='Desktop'>
+                <Component Id='ApplicationShortcutDesktop' Guid='*'>
+                    <Shortcut Id='ApplicationDesktopShortcut'
+                              Name='一梦音乐播放器'
+                              Description='运行一梦音乐播放器'
+                              Target='[!exe0]'
+                              Icon='ProductICO'
+                              WorkingDirectory='INSTALLDIR'/>
+                    <RemoveFolder Id='DesktopFolder' On='uninstall'/>
+                    <RegistryKey Root='HKCU' Key='Software\EasterDon\clx-music-player-gpui'>
+                        <RegistryValue Name='Desktop Shortcut'
+                                       Type='integer'
+                                       Value='1'
+                                       KeyPath='yes'/>
+                    </RegistryKey>
+                </Component>
+            </Directory>
+
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='$(var.AppRootFolderName)'>
-                    
-                    <!--
-                      Enabling the license sidecar file in the installer is a four step process:
-
-                      1. Uncomment the `Component` tag and its contents.
-                      2. Change the value for the `Source` attribute in the `File` tag to a path
-                         to the file that should be included as the license sidecar file. The path
-                         can, and probably should be, relative to this file.
-                      3. Change the value for the `Name` attribute in the `File` tag to the
-                         desired name for the file when it is installed alongside the `bin` folder
-                         in the installation directory. This can be omitted if the desired name is
-                         the same as the file name.
-                      4. Uncomment the `ComponentRef` tag with the Id attribute value of "License"
-                         further down in this file.
-                    -->
-                    <!--
-                    <Component Id='License' Guid='*'>
-                        <File Id='LicenseFile' Name='ChangeMe' DiskId='1' Source='C:\Path\To\File' KeyPath='yes'/>
-                    </Component>
-                    -->
-
-                    <Directory Id='Bin' Name='$(var.EditionFolderName)'>
-                        <Component Id='Path' Guid='7A5A3777-ACE9-4E6F-B56B-387E3A555DA3' KeyPath='yes'>
-                            <Environment
-                                Id='PATH'
-                                Name='PATH'
-                                Value='[Bin]'
-                                Permanent='no'
-                                Part='last'
-                                Action='set'
-                                System='yes'/>
-                        </Component>
-                        <Component Id='binary0' Guid='*'>
-                            <File
-                                Id='exe0'
-                                Name='clx-gpui.exe'
-                                DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\clx-gpui.exe'
-                                KeyPath='yes'/>
-                        </Component>
-                    </Directory>
+                <!-- %ProgramFiles%\clx-music-player\gpui\，与 Tauri 版（...\tauri）并列 -->
+                <Directory Id='APP_ROOT' Name='$(var.AppRootFolderName)'>
+                    <Directory Id='INSTALLDIR' Name='$(var.EditionFolderName)'/>
                 </Directory>
+            </Directory>
+
+            <!-- 开始菜单快捷方式 -->
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='ApplicationProgramsFolder' Name='一梦音乐播放器'/>
             </Directory>
         </Directory>
 
+        <DirectoryRef Id='INSTALLDIR'>
+            <Component Id='Path' Guid='7A5A3777-ACE9-4E6F-B56B-387E3A555DA3' KeyPath='yes'>
+                <Environment
+                    Id='PATH'
+                    Name='PATH'
+                    Value='[INSTALLDIR]'
+                    Permanent='no'
+                    Part='last'
+                    Action='set'
+                    System='yes'/>
+            </Component>
+            <Component Id='binary0' Guid='*'>
+                <File
+                    Id='exe0'
+                    Name='clx-gpui.exe'
+                    DiskId='1'
+                    Source='$(var.CargoTargetBinDir)\clx-gpui.exe'
+                    KeyPath='yes'/>
+                <!-- 卸载时清理安装目录（与文件同为 per-machine 作用域） -->
+                <RemoveFolder Id='INSTALLDIR' On='uninstall'/>
+            </Component>
+            <!--
+              记录安装目录，供升级时读回（与上方 PREV_INSTALL_DIR 搜索对应）。
+              读写均用 HKCU：AppSearch 阶段 ALLUSERS 可能尚未确定，HKMU 解析不可靠；
+              该组件不含 Shortcut，不触发 ICE57。
+            -->
+            <Component Id='RegistryEntries' Guid='*'>
+                <RegistryKey Root='HKCU' Key='Software\EasterDon\clx-music-player-gpui'>
+                    <RegistryValue Name='InstallDir'
+                                   Type='string'
+                                   Value='[INSTALLDIR]'
+                                   KeyPath='yes'/>
+                </RegistryKey>
+            </Component>
+        </DirectoryRef>
+
+        <DirectoryRef Id='ApplicationProgramsFolder'>
+            <Component Id='ApplicationShortcut' Guid='*'>
+                <Shortcut Id='ApplicationStartMenuShortcut'
+                          Name='一梦音乐播放器'
+                          Description='运行一梦音乐播放器'
+                          Target='[!exe0]'
+                          Icon='ProductICO'
+                          WorkingDirectory='INSTALLDIR'/>
+                <RemoveFolder Id='ApplicationProgramsFolder' On='uninstall'/>
+                <RegistryKey Root='HKCU' Key='Software\EasterDon\clx-music-player-gpui'>
+                    <RegistryValue Name='Start Menu Shortcut'
+                                   Type='integer'
+                                   Value='1'
+                                   KeyPath='yes'/>
+                </RegistryKey>
+            </Component>
+            <!-- 卸载快捷方式放在开始菜单（per-user），KeyPath 用 HKCU，避免 HKMU→HKLM 写注册表失败 (Error 1406) -->
+            <Component Id='CMP_UninstallShortcut' Guid='*'>
+                <Shortcut Id='UninstallShortcut'
+                          Name='卸载 一梦音乐播放器'
+                          Description='卸载一梦音乐播放器'
+                          Target='[System64Folder]msiexec.exe'
+                          Arguments='/x [ProductCode]'/>
+                <RemoveFolder Id='RemoveUninstallProgramsFolder' On='uninstall'/>
+                <RegistryKey Root='HKCU' Key='Software\EasterDon\clx-music-player-gpui'>
+                    <RegistryValue Name='Uninstaller Shortcut'
+                                   Type='integer'
+                                   Value='1'
+                                   KeyPath='yes'/>
+                </RegistryKey>
+            </Component>
+        </DirectoryRef>
+
         <Feature
             Id='Binaries'
-            Title='Application'
-            Description='Installs all binaries and the license.'
+            Title='安装 一梦音乐播放器'
+            Description='安装主程序与所需文件。'
             Level='1'
-            ConfigurableDirectory='APPLICATIONFOLDER'
+            ConfigurableDirectory='INSTALLDIR'
             AllowAdvertise='no'
             Display='expand'
             Absent='disallow'>
-            
-            <!--
-              Uncomment the following `ComponentRef` tag to add the license
-              sidecar file to the installer.
-            -->
-            <!--<ComponentRef Id='License'/>-->
-
             <ComponentRef Id='binary0'/>
+
+            <Feature Id='ShortcutsFeature'
+                Title='快捷方式'
+                Description='创建桌面、开始菜单与卸载快捷方式。'
+                Level='1'>
+                <ComponentRef Id='Path'/>
+                <ComponentRef Id='RegistryEntries'/>
+                <ComponentRef Id='CMP_UninstallShortcut'/>
+                <ComponentRef Id='ApplicationShortcut'/>
+                <ComponentRef Id='ApplicationShortcutDesktop'/>
+            </Feature>
 
             <Feature
                 Id='Environment'
-                Title='PATH Environment Variable'
-                Description='Add the install location of the [ProductName] executable to the PATH system environment variable. This allows the [ProductName] executable to be called from any location.'
+                Title='PATH 环境变量'
+                Description='将 [ProductName] 的安装目录加入 PATH 系统环境变量，使其可在任意位置调用。'
                 Level='0'
                 Absent='allow'>
                 <ComponentRef Id='Path'/>
             </Feature>
         </Feature>
 
-        <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
-
-        
         <!--
-          Uncomment the following `Icon` and `Property` tags to change the product icon.
+          安装路径规范化：防止用户把安装位置选成盘符根目录后，文件散落到盘根。
 
-          The product icon is the graphic that appears in the Add/Remove
-          Programs control panel for the application.
+          MSI 条件没有「长度」或「以…结尾」函数（~= 是「包含」，会把
+          C:\\Program Files\\... 也误判成盘根），故用内联 JScript 处理：
+            1) 去掉末尾的 \\ 或 /；
+            2) 若剩下形如 "D:"（盘根），追加 \\clx-music-player\\gpui；
+
+          时机：在「选择安装位置」对话框点击「下一步」时执行，此时目录尚未
+          定价（CostFinalize 还未运行），写回 INSTALLDIR 才会真正生效。
+          在 CostFinalize 之后修改目录属性不会重算目录表。
         -->
+        <CustomAction Id='CalculateInstallDir'
+                      Script='jscript'
+                      Execute='immediate'
+                      Return='check'>
+          <![CDATA[
+            var d=Session.Property("INSTALLDIR");if(d){var s=d.replace(/[\\/]+$/,"");if(/^[A-Za-z]:$/.test(s))s+="\\clx-music-player\\gpui";Session.Property("INSTALLDIR")=s;}
+          ]]>
+        </CustomAction>
+
+        <InstallUISequence>
+            <!-- 有 UI：AppSearch 读完注册表后立刻写回 INSTALLDIR，供「选择安装位置」页显示 -->
+            <Custom Action='RestorePrevInstallDir' After='AppSearch'>NOT Installed</Custom>
+        </InstallUISequence>
+        <InstallExecuteSequence>
+            <!-- 静默安装（无 UI）时也要读回旧路径 -->
+            <Custom Action='RestorePrevInstallDir' After='AppSearch'>NOT Installed</Custom>
+            <!-- 静默安装（无 UI）时同样规范化，保障行为一致 -->
+            <Custom Action='CalculateInstallDir' Before='CostFinalize'>(NOT Installed) AND (UILevel = 2)</Custom>
+        </InstallExecuteSequence>
+
+        <SetProperty Id='ARPINSTALLLOCATION' Value='[INSTALLDIR]' After='CostFinalize'/>
+
         <Icon Id='ProductICO' SourceFile='$(sys.SOURCEFILEDIR)Product.ico'/>
         <Property Id='ARPPRODUCTICON' Value='ProductICO' />
 
-        
-        <!--
-          Adding a URL to Add/Remove Programs control panel listing for the
-          application is a two step process:
-
-          1. Uncomment the following `Property` tag with the "ARPHELPLINK" Id
-             attribute value.
-          2. Change the value for `Value` attribute of the following
-             `Property` tag to a valid URL.
-        -->
-        <!--<Property Id='ARPHELPLINK' Value='ChangeMe'/>-->
-
         <UI>
-            <UIRef Id='WixUI_FeatureTree'/>
-            
+            <UIRef Id='WixUI_InstallDir'/>
+            <Property Id='WIXUI_INSTALLDIR' Value='INSTALLDIR'/>
+
             <!--
-              Enabling the EULA dialog in the installer is a three step process:
+              离开「选择安装位置」页时规范化目录：用户若选了盘符根目录（D:\），
+              自动追加 clx-music-player\\gpui，避免文件散落到盘根。
 
-                1. Comment out or remove the two `Publish` tags that follow the
-                   `WixVariable` tag.
-                2. Uncomment the `<WixVariable Id='WixUILicenseRtf' Value='Path\to\Eula.rft'>` tag further down
-                3. Replace the `Value` attribute of the `WixVariable` tag with
-                   the path to a RTF file that will be used as the EULA and
-                   displayed in the license agreement dialog.
+              只追加 DoAction，且用较小的 Order 保证先于库内置的 NewDialog 执行；
+              不要重复发布 NewDialog（WixUI_InstallDir 已有），否则对话框跳转冲突。
+              此时尚未 CostFinalize，写回 INSTALLDIR 会被后续目录定价采用。
             -->
-            <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='CustomizeDlg' Order='99'>1</Publish>
-            <Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='99'>1</Publish>
-
+            <Publish Dialog='InstallDirDlg'
+                     Control='Next'
+                     Event='DoAction'
+                     Value='CalculateInstallDir'
+                     Order='1'>1</Publish>
         </UI>
-
-        
-        <!--
-          Enabling the EULA dialog in the installer requires uncommenting
-          the following `WixUILicenseRTF` tag and changing the `Value`
-          attribute.
-        -->
-        <!-- <WixVariable Id='WixUILicenseRtf' Value='Relative\Path\to\Eula.rtf'/> -->
-
-        
-        <!--
-          Uncomment the next `WixVariable` tag to customize the installer's
-          Graphical User Interface (GUI) and add a custom banner image across
-          the top of each screen. See the WiX Toolset documentation for details
-          about customization.
-
-          The banner BMP dimensions are 493 x 58 pixels.
-        -->
-        <!--<WixVariable Id='WixUIBannerBmp' Value='wix\Banner.bmp'/>-->
-
-        
-        <!--
-          Uncomment the next `WixVariable` tag to customize the installer's
-          Graphical User Interface (GUI) and add a custom image to the first
-          dialog, or screen. See the WiX Toolset documentation for details about
-          customization.
-
-          The dialog BMP dimensions are 493 x 312 pixels.
-        -->
-        <!--<WixVariable Id='WixUIDialogBmp' Value='wix\Dialog.bmp'/>-->
 
     </Product>
 

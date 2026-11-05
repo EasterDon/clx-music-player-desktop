@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "clx-core"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "dispatch2",
  "enigo",
@@ -1071,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "clx-gpui"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "clx-core",
  "global-hotkey",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "clx_music_player"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "clx-core",
  "serde",

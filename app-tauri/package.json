@@ -9,9 +9,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/package.ps1",
-    "package:msi": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/package.ps1 -Msi"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",

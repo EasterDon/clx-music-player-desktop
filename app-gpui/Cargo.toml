@@ -10,7 +10,8 @@ build = "build.rs"
 [package.metadata.wix]
 eula = false
 license = false
-# 安装目录：%ProgramFiles%\一梦音乐播放器
+# 安装目录由 wix/main.wxs 的 AppRootFolderName / EditionFolderName 决定（%ProgramFiles%\clx-music-player\gpui\）；
+# 此处仅为 cargo wix 元数据，使用自定义模板时不生效。
 install-dir = "clx-music-player"
 # 开始菜单快捷方式
 enable-elevated-update-task = false

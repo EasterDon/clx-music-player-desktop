@@ -78,17 +78,47 @@
         <Property Id="ARPURLUPDATEINFO" Value="{{homepage}}"/>
         {{/if}}
 
-        <!-- NOTE: The order of RegistrySearch elements below matters. In WIX, when multiple
-             RegistrySearch elements are listed under a single Property, the LAST successful
-             match wins. We list the NSIS default-key search first and the MSI InstallDir
-             search second so that the MSI-specific path takes priority when both keys exist. -->
-        <Property Id="INSTALLDIR">
-          <!-- First attempt: Search for the default key value (this is how the nsis installer stores the path) -->
-          <RegistrySearch Id="PrevInstallDirNoName" Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Type="raw" />
+        <!--
+          安装路径沿用：从注册表读取上次的安装目录，按优先级合并。
 
-          <!-- Second attempt: Search for "InstallDir" which takes priority if found (this is how the msi installer stores the path) -->
-          <RegistrySearch Id="PrevInstallDirWithName" Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="InstallDir" Type="raw" />
+          注意：多个 <RegistrySearch> 挂在同一个 <Property> 下时，任一搜索失败都会
+          把该属性置空（每个 Search 生成一条 SetProperty，后执行的会覆盖先前的成功值），
+          因此这里每个来源先用【独立的中间属性】读取，再用自定义动作按优先级合并：
+
+            P4) 旧键默认值            （NSIS 风格，键值即路径）
+            P3) 旧键 InstallDir       （键名改装前的版本写入的）
+            P2) 新键默认值
+            P1) 新键 InstallDir       （当前版本，优先级最高）
+
+          属性名用 P1..P4 是为控制在 CustomAction.Target 的 255 字符上限内。
+
+          优先级从低到高覆盖，最终写入 INSTALLDIR。
+        -->
+        <Property Id="P3">
+          <RegistrySearch Id="PrevInstallDirLegacyWithName" Root="HKCU" Key="Software\{{manufacturer}}\{{product_name}}" Name="InstallDir" Type="raw" />
         </Property>
+        <Property Id="P4">
+          <RegistrySearch Id="PrevInstallDirLegacyNoName" Root="HKCU" Key="Software\{{manufacturer}}\{{product_name}}" Type="raw" />
+        </Property>
+        <!-- 旧键的另一种转义写法（历史版本可能写入双反斜杠形态），一并兼容 -->
+        <Property Id="P5">
+          <RegistrySearch Id="PrevInstallDirLegacyAlt" Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="InstallDir" Type="raw" />
+        </Property>
+        <Property Id="P1">
+          <RegistrySearch Id="PrevInstallDirWithName" Root="HKCU" Key="Software\{{manufacturer}}\clx-music-player-tauri" Name="InstallDir" Type="raw" />
+        </Property>
+        <Property Id="P2">
+          <RegistrySearch Id="PrevInstallDirNoName" Root="HKCU" Key="Software\{{manufacturer}}\clx-music-player-tauri" Type="raw" />
+        </Property>
+
+        <CustomAction Id="RestorePrevInstallDir"
+                      Script="jscript"
+                      Execute="immediate"
+                      Return="check">
+          <![CDATA[
+            var p=[Session.Property("P1"),Session.Property("P2"),Session.Property("P3"),Session.Property("P4"),Session.Property("P5")],d="";for(var i=0;i<p.length;i++){if(p[i])d=p[i]}if(d)Session.Property("INSTALLDIR")=d;
+          ]]>
+        </CustomAction>
 
         <!-- launch app checkbox -->
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="!(loc.LaunchApp)" />
@@ -100,6 +130,13 @@
             <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
 
             <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+            <!-- 离开「选择安装位置」页时执行盘根保护；Order 小于库内置 NewDialog -->
+            <Publish Dialog="InstallDirDlg"
+                     Control="Next"
+                     Event="DoAction"
+                     Value="CalculateInstallDir"
+                     Order="1">1</Publish>
 
             {{#unless license}}
             <!-- Skip license dialog -->
@@ -118,12 +155,47 @@
 
         <UIRef Id="WixUI_InstallDir" />
 
+        <!--
+          盘根保护：用户在「选择安装位置」页若选了盘符根目录（如 D:\），
+          自动把安装目录改为 <盘>\clx-music-player\tauri，避免文件散落到盘根。
+
+          MSI 条件没有「长度」或「以…结尾」函数（~= 是包含语义，会把
+          C:\Program Files\... 也误判为盘根），故用内联 JScript 处理：
+            1) 去掉末尾的 \ 或 /；
+            2) 若剩下形如 "D:"（盘根），追加 \clx-music-player\tauri。
+
+          仅在安装流程执行（NOT Installed）。
+        -->
+        <CustomAction Id="CalculateInstallDir"
+                      Script="jscript"
+                      Execute="immediate"
+                      Return="check">
+          <![CDATA[
+            var d=Session.Property("INSTALLDIR");if(d){var s=d.replace(/[\\/]+$/,"");if(/^[A-Za-z]:$/.test(s))s+="\\clx-music-player\\tauri";Session.Property("INSTALLDIR")=s;}
+          ]]>
+        </CustomAction>
+
+        <!--
+          RestorePrevInstallDir 必须在 AppSearch 之后、CostFinalize 之前执行，
+          才能把读到的旧路径写进 INSTALLDIR 并被目录定价采用。
+          随后 CalculateInstallDir 再做盘根保护（静默安装路径）。
+        -->
+        <InstallUISequence>
+            <Custom Action="RestorePrevInstallDir" After="AppSearch">NOT Installed</Custom>
+        </InstallUISequence>
+        <InstallExecuteSequence>
+            <Custom Action="RestorePrevInstallDir" After="AppSearch">NOT Installed</Custom>
+            <Custom Action="CalculateInstallDir" Before="CostFinalize">(NOT Installed) AND (UILevel = 2)</Custom>
+        </InstallExecuteSequence>
+
+
+
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="DesktopFolder" Name="Desktop">
                 <Component Id="ApplicationShortcutDesktop" Guid="*">
                     <Shortcut Id="ApplicationDesktopShortcut" Name="{{product_name}}" Description="Runs {{product_name}}" Target="[!Path]" WorkingDirectory="INSTALLDIR" />
                     <RemoveFolder Id="DesktopFolder" On="uninstall" />
-                    <RegistryValue Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="Desktop Shortcut" Type="integer" Value="1" KeyPath="yes" />
+                    <RegistryValue Root="HKCU" Key="Software\{{manufacturer}}\clx-music-player-tauri" Name="Desktop Shortcut" Type="integer" Value="1" KeyPath="yes" />
                 </Component>
             </Directory>
             <Directory Id="$(var.PlatformProgramFilesFolder)" Name="PFiles">
@@ -139,7 +211,16 @@
 
         <DirectoryRef Id="INSTALLDIR">
             <Component Id="RegistryEntries" Guid="*">
-                <RegistryKey Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}">
+                <!--
+                  清理旧版遗留的注册表键（键名改装前的 Software\<manufacturer>\<product_name>）。
+                  安装与卸载都会删除：升级时顺手清掉老键，避免残留。
+                  RemoveRegistryKey 作用在父键上；旧键下的值（InstallDir 等）随之移除。
+                -->
+                <RemoveRegistryKey Id="RemoveLegacyRegistryKey"
+                                   Root="HKCU"
+                                   Key="Software\{{manufacturer}}\{{product_name}}"
+                                   Action="removeOnInstall" />
+                <RegistryKey Root="HKCU" Key="Software\{{manufacturer}}\clx-music-player-tauri">
                     <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
                 </RegistryKey>
                 <!-- Change the Root to HKCU for perUser installations -->
@@ -185,24 +266,6 @@
             </Component>
             {{/if}}
             {{resources}}
-            <Component Id="CMP_UninstallShortcut" Guid="*">
-
-                <Shortcut Id="UninstallShortcut"
-						  Name="Uninstall {{product_name}}"
-						  Description="Uninstalls {{product_name}}"
-						  Target="[System64Folder]msiexec.exe"
-						  Arguments="/x [ProductCode]" />
-
-				<RemoveFolder Id="INSTALLDIR"
-							  On="uninstall" />
-
-				<RegistryValue Root="HKCU"
-							   Key="Software\\{{manufacturer}}\\{{product_name}}"
-							   Name="Uninstaller Shortcut"
-							   Type="integer"
-							   Value="1"
-							   KeyPath="yes" />
-            </Component>
         </DirectoryRef>
 
         <DirectoryRef Id="ApplicationProgramsFolder">
@@ -216,8 +279,23 @@
                     <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
                 </Shortcut>
                 <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-                <RegistryValue Root="HKCU" Key="Software\\{{manufacturer}}\\{{product_name}}" Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
+                <RegistryValue Root="HKCU" Key="Software\{{manufacturer}}\clx-music-player-tauri" Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
            </Component>
+            <!-- 卸载快捷方式放在开始菜单（per-user），KeyPath 用 HKCU，避免 HKMU→HKLM 写注册表失败 (Error 1406) -->
+            <Component Id="CMP_UninstallShortcut" Guid="*">
+                <Shortcut Id="UninstallShortcut"
+                          Name="Uninstall {{product_name}}"
+                          Description="Uninstalls {{product_name}}"
+                          Target="[System64Folder]msiexec.exe"
+                          Arguments="/x [ProductCode]" />
+                <RemoveFolder Id="RemoveUninstallProgramsFolder" On="uninstall" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\{{manufacturer}}\clx-music-player-tauri"
+                               Name="Uninstaller Shortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+            </Component>
         </DirectoryRef>
 
         {{#each merge_modules as |msm| ~}}
